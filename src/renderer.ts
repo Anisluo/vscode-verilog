@@ -5,7 +5,7 @@ import { workbench } from '../vscode/src/web-platform';
 import './style.css';
 import { compile, radixShort } from './design';
 import type { Design, Logic, Part, Radix, Scope, Signal, Vector } from './design';
-import type { BuildOptions, BuildResult, Diagnostic, Source } from './protocol';
+import type { BuildOptions, BuildResult, Diagnostic, Source, TargetPlatform } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
 import type { Palette } from './schematic';
 import type { Frame, Request } from './sim-worker';
@@ -45,6 +45,7 @@ let jtagBusy = false;
 let bitstreamRevision: number | undefined;
 
 function disableBuildButtons(disabled: boolean) {
+  select('target-platform').disabled = disabled;
   for (const id of ['synthesize', 'run-sta', 'build-bitstream', 'detect-jlink']) button(id).disabled = disabled;
   button('program-jlink').disabled = disabled || bitstreamRevision !== revision;
 }
@@ -479,6 +480,18 @@ function selectWorkbenchTab(selected: HTMLButtonElement) {
     el(tab.getAttribute('aria-controls')!).hidden = !active;
   }
 }
+function showTargetPlatform(platform: TargetPlatform) {
+  select('target-platform').value = platform;
+  const fpga = platform === 'fpga';
+  button('run-sta').hidden = fpga || testbenchView;
+  button('build-bitstream').hidden = !fpga || testbenchView;
+  button('view-sta').hidden = fpga || testbenchView;
+  button('view-fpga').hidden = !fpga || testbenchView;
+  if (workbenchTabs.some(tab => tab.hidden && tab.getAttribute('aria-selected') === 'true')) {
+    selectWorkbenchTab(button(testbenchView ? 'view-wave' : 'view-diagram'));
+  }
+}
+
 function bindWorkbenchTabs() {
   for (const tab of workbenchTabs) {
     tab.onclick = () => selectWorkbenchTab(tab);
@@ -497,11 +510,10 @@ function bindWorkbenchTabs() {
   }
   if (!testbenchView) button('view-wave').hidden = true;
   else {
-    button('view-sta').hidden = true;
-    button('view-fpga').hidden = true;
     button('mode-gate').hidden = true;
     el('schematic').querySelector('.empty')!.textContent = '正在准备被测模块的 RTL 电路图…';
   }
+  showTargetPlatform('asic');
   selectWorkbenchTab(button(testbenchView ? 'view-wave' : 'view-diagram'));
 }
 
@@ -1015,6 +1027,11 @@ for (const mode of modes) {
     button('mode-' + target).click();
   };
 }
+on('target-platform', 'change', () => {
+  const platform = select('target-platform').value as TargetPlatform;
+  showTargetPlatform(platform);
+  void workbench.targetPlatform(platform).catch(error => status(String(error), true));
+});
 on('synthesize', 'click', () => { void synthesize(); });
 on('run-sta', 'click', () => { void runSta(); });
 on('build-bitstream', 'click', () => { void buildBitstream(); });
@@ -1068,7 +1085,8 @@ new MutationObserver(() => {
   renderInspector();
   draw();
 }).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-workbench.connect(sources => {
+workbench.connect((sources, platform) => {
+  if (platform) showTargetPlatform(platform);
   hostSources = sources;
   inputsChanged();
 }, loadTestbench);

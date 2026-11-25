@@ -1,5 +1,5 @@
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, BuildResult, Diagnostic, Source, SynthesisStage } from '../../src/protocol';
+import type { BuildOptions, BuildResult, Diagnostic, Source, SynthesisStage, TargetPlatform } from '../../src/protocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -17,12 +17,12 @@ const workerUrls = await Promise.all(workerNames.map(async name => {
 
 let sequence = 0;
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; progress?: (stage: SynthesisStage) => void }>();
-type SourceUpdate = (sources: Pick<Source, 'id' | 'name'>[]) => void;
+type SourceUpdate = (sources: Pick<Source, 'id' | 'name'>[], platform?: TargetPlatform) => void;
 let update: SourceUpdate | undefined;
 let testbenchUpdate: ((result?: TestbenchResult) => void) | undefined;
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'sources') {
-    update?.(data.sources);
+    update?.(data.sources, data.platform);
   } else if (data.type === 'testbench') {
     testbenchUpdate?.(data.result);
   } else if (data.type === 'synthesis-stage') {
@@ -45,6 +45,7 @@ function ask<T>(type: string, payload?: unknown, progress?: (stage: SynthesisSta
 }
 
 export const workbench = {
+  targetPlatform: (platform: TargetPlatform) => ask<void>('target-platform', platform),
   directory: () => ask<string | undefined>('directory'),
   hdl: (options: BuildOptions, lint: boolean, progress?: (stage: SynthesisStage) => void) =>
     ask<BuildResult>('hdl', { options, lint }, progress),

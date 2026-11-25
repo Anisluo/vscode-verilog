@@ -66,6 +66,8 @@ npm run package:vscode -- --hdl-root "C:/HDLTools" --icarus-root "C:/msys64/ucrt
 
 由 [Anisluo](https://github.com/Anisluo) 开发和维护。原始实现的版权归属和许可详见 [MIT License](LICENSE)。
 
+综合工作台的 **Target** 用来选择 ASIC（OpenSTA）或 Xilinx 7 系列 FPGA（openXC7）。扩展会记住当前工作区的选择。
+
 ## OpenSTA 静态时序分析
 
 执行 **Verilog: 打开 FIFO 示例**，然后在综合工作台点击 **Run STA**。扩展用 Yosys 将 FIFO 映射到内置示例 Liberty，再按示例 SDC 调用 OpenSTA。**STA** 标签内显示 Setup 和 Hold 的最差 slack、路径明细与约束覆盖检查。示例使用 1 ns 时钟周期和教学用单元延迟模型，结果属于布局布线前的分析。
@@ -76,7 +78,7 @@ OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debi
 
 ## 生成 Xilinx 7 系列 FPGA 比特流
 
-在综合工作台点击 **Build Bitstream**，依次运行 Yosys、nextpnr-xilinx 和 openXC7 比特流工具。**Bitstream** 标签显示编译日志和 `.bit` 文件位置。
+在综合工作台将 **Target** 设为 **Xilinx 7 Series (openXC7)**，再点击 **Build Bitstream**，依次运行 Yosys、nextpnr-xilinx 和 openXC7 比特流工具。**Bitstream** 标签显示编译日志和 `.bit` 文件位置。
 
 先解压 [openXC7 发布包](https://github.com/cavearr/toolchain-openxc7-releases/releases) 与该版本指定的 OSS CAD Suite。在 VS Code 设置中，将 `verilogWorkbench.fpgaToolchainPath` 和 `verilogWorkbench.fpgaYosysPath` 分别指向两个解压目录的根目录。Windows 使用 OSS CAD Suite 内的 Python。此流程使用工具包内已生成的器件数据库。
 

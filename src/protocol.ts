@@ -5,6 +5,8 @@ export interface Source {
   text: string;
 }
 
+export type TargetPlatform = 'asic' | 'fpga';
+
 export type SynthesisStage = 'synthesis' | 'netlist' | 'sta' | 'place-route' | 'bitstream';
 
 export interface BuildOptions {

@@ -183,7 +183,8 @@ dialog p { margin: 0; }
   .transport { padding-inline: 8px; gap: 6px; }
   .wave-panel .panel-header { gap: 6px; }
 }
-.synth-actions { display: flex; flex: none; gap: 16px; white-space: nowrap; }
+.synth-actions { display: flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 6px 16px; white-space: nowrap; }
+.target-platform { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .synth-button-group { display: flex; }
 .synth-actions #synthesize { border-radius: 5px 0 0 5px; }
 .synth-actions #settings { width: 12px; border-radius: 0 5px 5px 0; border-left: 1px solid #40766d; padding-inline: 0; }

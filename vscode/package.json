@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -142,6 +142,16 @@
           "default": "jlink",
           "scope": "machine",
           "description": "openFPGALoader 的 JTAG 探针类型。按 J-Link 的 USB 型号选择 jlink 或 jlink_base。"
+        },
+        "verilogWorkbench.targetPlatform": {
+          "type": "string",
+          "enum": [
+            "asic",
+            "fpga"
+          ],
+          "default": "asic",
+          "scope": "resource",
+          "description": "综合工作台目标。ASIC 显示 OpenSTA，FPGA 显示 openXC7 比特流和 JTAG 下载。"
         }
       }
     }

@@ -9,7 +9,7 @@ import type { FpgaOptions } from '../../src/fpga';
 import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, Diagnostic, Source } from '../../src/protocol';
+import type { BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
 
 const inputFile = /\.(v|sv)$/i;
 const hdlFile = /\.(v|sv|vh|svh)$/i;
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
         sources = snapshot;
         diagnostics.clear();
       }
-      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })) });
+      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })), platform: configuration().get<TargetPlatform>('targetPlatform', 'asic') });
     } catch (error) {
       if (target !== panel || version !== refreshVersion) return;
       sources = [];
@@ -227,6 +227,14 @@ export function activate(context: vscode.ExtensionContext) {
       const reply = (result: unknown, error?: string) => target === panel
         ? target.webview.postMessage({ type: 'reply', id: message.id, result, error }) : undefined;
       try {
+        if (message.type === 'target-platform') {
+          const platform = message.payload as TargetPlatform;
+          if (platform !== 'asic' && platform !== 'fpga') throw new Error('未知目标平台。');
+          const folder = primary && vscode.workspace.getWorkspaceFolder(primary.uri);
+          await configuration().update('targetPlatform', platform,
+            folder ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global);
+          await reply(undefined);
+        }
         if (message.type === 'directory') {
           const choice = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true });
           await reply(choice?.[0]?.fsPath);
