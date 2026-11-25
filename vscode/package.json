@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",

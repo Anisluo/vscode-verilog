@@ -4,7 +4,7 @@ import type { TestbenchResult } from './testbench';
 import { workbench } from '../vscode/src/web-platform';
 import './style.css';
 import { compile, radixShort } from './design';
-import type { Design, Logic, Part, Radix, Signal, Vector } from './design';
+import type { Design, Logic, Part, Radix, Scope, Signal, Vector } from './design';
 import type { BuildOptions, BuildResult, Diagnostic, Source } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
 import type { Palette } from './schematic';
@@ -45,6 +45,8 @@ let design: Design | undefined;
 let trace: WaveTrace | undefined;
 const testbenchView = document.body.classList.contains('testbench-view');
 let scopes: string[] = [];
+let dutOverview: Scope | undefined;
+const inDutOverview = () => dutOverview?.id === scopes.at(-1) && !!dutOverview;
 let watched = new Set<string>();
 const probes = new Map<string, Signal>();
 const displayRadices = new Map<string, Radix>();
@@ -87,6 +89,7 @@ const schematic = new Schematic(
   (signal, x, y, aliases) => signalMenu(signal, x, y, aliases),
   () => workbench.worker('layout-worker'),
   workbench.elkWorkerUrl,
+  testbenchView,
 );
 const waveform = new Waveform(el('wave'), el('wave-scroll'), handleWave, zoomWave,
   (start, finish) => setView(start, finish - start), setView, openRadixMenu, signal => {
@@ -415,7 +418,7 @@ function selectSignal(signal: Signal, control: HTMLButtonElement) {
   el('signals').querySelector('.signal-control[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false');
   control.setAttribute('aria-pressed', String(!!selectedSignalId));
   schematic.highlightSignal(selectedSignalId ? signal : undefined);
-  if (!selectedSignalId || !design) return;
+  if (!selectedSignalId || !design || inDutOverview()) return;
   let scope = design.scopes.find(item => item.signalIds.includes(signal.id));
   if (!scope || scope.id === scopes.at(-1)) return;
   const path: string[] = [];
@@ -424,15 +427,19 @@ function selectSignal(signal: Signal, control: HTMLButtonElement) {
     path.unshift(childId);
     scope = design.scopes.find(item => item.parts.some(part => part.child === childId));
   }
-  scopes = path;
+  scopes = dutOverview ? [dutOverview.id, ...path] : path;
   showScope();
 }
 
 function renderInspector() {
   const filter = input('signal-filter').value.trim().toLowerCase();
-  const signals = (design?.signals ?? []).filter(signal => signal.name.toLowerCase().includes(filter));
+  const overview = inDutOverview();
+  const signals = (design?.signals ?? []).filter(signal =>
+    (!overview || dutOverview!.signalIds.includes(signal.id)) && signal.name.toLowerCase().includes(filter));
+  if (overview) inspector = 'signals';
+  button('show-parts').hidden = overview;
   const partCounts = new Map<string, number>();
-  for (const cell of design?.cells ?? []) partCounts.set(cell.type, (partCounts.get(cell.type) ?? 0) + 1);
+  for (const cell of overview ? [] : design?.cells ?? []) partCounts.set(cell.type, (partCounts.get(cell.type) ?? 0) + 1);
   el('inspector-count').textContent = String(inspector === 'signals' ? signals.length : design?.cells.length ?? 0);
   el('signal-pane').hidden = inspector !== 'signals';
   el('part-pane').hidden = inspector !== 'parts';
@@ -489,6 +496,7 @@ function renderInspector() {
       if (containing) {
         const path = JSON.parse(containing.id) as string[];
         scopes = path.map((_, index) => JSON.stringify(path.slice(0, index + 1)));
+        if (dutOverview) scopes.unshift(dutOverview.id);
         showScope();
       }
       renderInspector(); draw();
@@ -511,14 +519,16 @@ function renderInspector() {
 
 function showScope(keepPrevious = false) {
   if (!design) return;
+  renderInspector();
   el('scope-path').replaceChildren(...scopes.map((id, index) => {
     const element = document.createElement(index === scopes.length - 1 ? 'span' : 'button');
-    element.textContent = (JSON.parse(id) as string[]).at(-1)!;
+    element.textContent = id === dutOverview?.id ? 'DUT' : (JSON.parse(id) as string[]).at(-1)!;
+    if (id === dutOverview?.id && inDutOverview()) element.textContent += ' · 双击模块查看 RTL';
     element.title = element.textContent;
     if (element instanceof HTMLButtonElement) element.onclick = () => { scopes = scopes.slice(0, index + 1); showScope(); };
     return element;
   }));
-  const scope = design.scopes.find(item => item.id === scopes.at(-1))!;
+  const scope = inDutOverview() ? dutOverview! : design.scopes.find(item => item.id === scopes.at(-1))!;
   const ids = new Set(scope.signalIds);
   const layout = schematic.show(scope, design.signals.filter(signal => ids.has(signal.id)), undefined, keepPrevious);
   if (!keepPrevious) refreshCriticalPath();
@@ -528,8 +538,10 @@ function showScope(keepPrevious = false) {
 function refreshCriticalPath() {
   const toggle = button('critical-path');
   const label = el('critical-delay');
+  const overview = inDutOverview();
+  toggle.hidden = overview;
   toggle.disabled = !design;
-  label.hidden = !design || toggle.getAttribute('aria-pressed') !== 'true';
+  label.hidden = overview || !design || toggle.getAttribute('aria-pressed') !== 'true';
   const scope = design?.scopes.find(item => item.id === scopes.at(-1));
   if (!design || !scope || label.hidden) { schematic.setCriticalPath(); return; }
   const result = criticalPath(design, scope, cellDelays);
@@ -629,8 +641,19 @@ function loadTestbenchDiagram(result?: BuildResult) {
   }
   design = compile(result.netlist, result.top, result.sourceNetlist);
   if (trace) traceDiagramSignals = linkTraceDiagram(trace, design);
-  scopes = [design.root];
-  renderInspector();
+  const root = design.scopes.find(scope => scope.id === design!.root)!;
+  const signals = new Map(design.signals.filter(signal => signal.direction).map(signal => [signal.id, signal]));
+  const pins = root.parts.flatMap(part => {
+    const signal = part.signal ? signals.get(part.signal) : undefined;
+    return signal?.bits && signal.direction
+      ? [{ name: part.name, bits: signal.bits, direction: signal.direction, signal: signal.id }] : [];
+  });
+  const id = JSON.stringify([]);
+  dutOverview = {
+    id, label: 'DUT', signalIds: pins.map(pin => pin.signal),
+    parts: [{ id, name: result.top, type: result.top, child: root.id, interfaceOnly: true, pins }],
+  };
+  scopes = [id];
   void showScope();
 }
 function traceClock() {

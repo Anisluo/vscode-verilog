@@ -65,14 +65,19 @@ function layoutNodes(parts: Part[], nets: WireNet[], portWidths: Map<string, num
     });
     const count = Math.max(sides.left.length, sides.right.length);
     const adapter = isAdapter(part);
-    const slots = count > 12 && !adapter && kind !== 'mux' ? 1 : 2;
+    const slots = !part.interfaceOnly && count > 12 && !adapter && kind !== 'mux' ? 1 : 2;
     const header = !adapter && !part.signal && !gateKinds.has(kind) && kind !== 'tribuf';
     const titleRows = kind === 'mux' ? 3 : 0;
     const height = Math.max(header ? 8 : 6, (header ? 6 : 4) + slots * (count - 1)) + titleRows;
     const labelSpace = (side: Terminal['side']) => Math.ceil((12 + Math.max(0, ...sides[side].map(({ pin }) => measure.measureText(pin.name).width))) / grid);
     const barX = adapter ? labelSpace('left') : undefined;
-    const width = barX !== undefined ? barX + labelSpace('right') : portWidths.get(part.id) ?? (kind === 'tribuf' ? Math.ceil(triBufferWidth / grid) : gateKinds.has(kind) ? 9 : kind === 'mux' ? 7
-      : Math.max(7, Math.min(17, Math.ceil((partTitle(part).length * 7 + 22) / grid))));
+    const interfaceSideWidth = (side: Terminal['side']) => Math.max(3, ...sides[side].map(({ pin }) =>
+      portWidths.get(pin.signal ?? '') ?? 0));
+    const width = part.interfaceOnly
+      ? Math.max(Math.ceil((part.name.length * 7 + 28) / grid), interfaceSideWidth('left') + interfaceSideWidth('right') + 2)
+      : barX !== undefined ? barX + labelSpace('right') : portWidths.get(part.id)
+        ?? (kind === 'tribuf' ? Math.ceil(triBufferWidth / grid) : gateKinds.has(kind) ? 9 : kind === 'mux' ? 7
+          : Math.max(7, Math.min(17, Math.ceil((partTitle(part).length * 7 + 22) / grid))));
     const cellType = part.signal || adapter ? undefined : part.type;
     if (cellType) {
       const previous = typeSizes.get(cellType);
@@ -131,7 +136,7 @@ export class Schematic {
   private groups: { shape: SVGGElement; part: Part }[] = [];
 
   constructor(private host: HTMLElement, private onPart: (part: Part) => void, private onWire: WireMenu,
-    private createLayoutWorker: () => Worker, private elkWorkerUrl: string) {
+    private createLayoutWorker: () => Worker, private elkWorkerUrl: string, private doubleClickModules = false) {
     new ResizeObserver(() => this.resize()).observe(host);
     host.addEventListener('wheel', event => {
       if (!this.drawing || event.deltaY === 0) return;
@@ -200,7 +205,9 @@ export class Schematic {
       this.overlay = undefined; this.traces.clear();
     }
     const signalById = new Map(signals.map(signal => [signal.id, signal]));
-    const { nets, parts } = diagramConnections(scope, signals);
+    const { nets, parts } = scope.parts[0]?.interfaceOnly
+      ? { nets: [], parts: scope.parts }
+      : diagramConnections(scope, signals);
     const { nodes, elkNodes, edges, ends } = layoutNodes(parts, nets, this.portWidths);
     const layout = this.createLayoutWorker();
     this.layout = layout;
@@ -320,13 +327,13 @@ export class Schematic {
       group.setAttribute('tabindex', '0');
       group.setAttribute('role', 'button');
       group.setAttribute('aria-label', part.name);
-      group.addEventListener('click', () => this.onPart(part));
+      group.addEventListener(this.doubleClickModules ? 'dblclick' : 'click', () => this.onPart(part));
       group.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.onPart(part); }
       });
     }
     const title = svg('title');
-    title.textContent = signal ? `${part.name} · ${signal.width} bit` : `${part.name}\n${part.type}`;
+    title.textContent = part.interfaceOnly ? part.name + ' · 双击查看 RTL' : signal ? `${part.name} · ${signal.width} bit` : `${part.name}\n${part.type}`;
     const gate = gateKinds.has(kind);
     // Keep terminals on the integer routing grid; scale the artwork exactly.
     const sx = gate ? 1.5 : kind === 'mux' ? .75 : 1;
@@ -373,6 +380,7 @@ export class Schematic {
       const x = px(at.point.x);
       const y = px(at.point.y);
       const available = net === undefined ? undefined : nets[net];
+      const portSignal = pin.signal ? signals.get(pin.signal) : undefined;
       const bits = available?.signal.bits ?? pin.bits;
       const end = bar ?? (right
         ? (gate || kind === 'tribuf' ? outputTip : kind === 'mux' ? localX(baseWidth - 8) : signal ? width : width - 8)
@@ -389,11 +397,18 @@ export class Schematic {
       if (clock) group.append(svg('path', { d: `M 8 ${y - 5} L 16 ${y} L 8 ${y + 5}`, class: 'symbol-detail' }));
       const pinTitle = svg('title');
       stub.append(pinTitle);
-      this.wires.push({ shapes: [stub], bits, title: pinTitle, signal: available?.signal });
-      if (available && edge !== x) {
-        stub.addEventListener('contextmenu', event => { event.preventDefault(); event.stopPropagation(); this.onWire(available.signal, event.clientX, event.clientY); });
+      this.wires.push({ shapes: [stub], bits, title: pinTitle, signal: portSignal ?? available?.signal });
+      const pinSignal = portSignal ?? available?.signal;
+      if (pinSignal && edge !== x) {
+        stub.addEventListener('contextmenu', event => { event.preventDefault(); event.stopPropagation(); this.onWire(pinSignal, event.clientX, event.clientY); });
       }
-      if (bar !== undefined) {
+      if (portSignal) {
+        const labelX = right ? width - 14 : 14;
+        const anchor = right ? 'end' : 'start';
+        display(pin.name, { x: labelX, y: y - 2 }, 'schematic-label', anchor);
+        const value = display('', { x: labelX, y: y + 9 }, 'schematic-label', anchor);
+        this.labels.push({ shape: value, signal: portSignal, title: pinTitle });
+      } else if (bar !== undefined) {
         const label = display(pin.name, { x: bar + (right ? 6 : -6), y: y - 3 }, 'schematic-label', right ? 'start' : 'end');
         if (pin.mapping) {
           const detail = svg('title'); detail.textContent = pin.mapping; label.append(detail);

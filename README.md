@@ -36,7 +36,7 @@ Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更
 
 FIFO Testbench 会自动执行复位、写入、读出和满空边界检查。波形页可观察 `used`、`empty`、`full`、`rd_valid` 和 `data_out`。
 
-在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，用 Icarus Verilog 执行行为仿真，并显示波形。切换到「电路图」可查看被测模块的 RTL，已记录的信号值随仿真光标更新。编译命令与 `PASS` 输出位于「诊断与日志」。需要使用自备版本时，可用 `verilogWorkbench.icarusPath` 指定包含 `iverilog` 和 `vvp` 的目录。
+在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，用 Icarus Verilog 执行行为仿真，并显示波形。切换到「电路图」可查看 DUT 方块及其端口，双击方块进入内部 RTL，点上方的 DUT 可返回。已记录的信号值随仿真光标更新。编译命令与 `PASS` 输出位于「诊断与日志」。需要使用自备版本时，可用 `verilogWorkbench.icarusPath` 指定包含 `iverilog` 和 `vvp` 的目录。
 
 其他项目可使用 `模块名_tb.v` 或 `tb_模块名.v` 命名，`.sv` 同样适用。额外设计文件使用 `verilogWorkbench.additionalSources`，顶层模块名与文件名不同时可设置 `verilogWorkbench.testbenchTop`。Testbench 需使用 `$dumpfile` 和 `$dumpvars` 在仿真目录生成一个 VCD。
 

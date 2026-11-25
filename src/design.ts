@@ -19,6 +19,7 @@ export interface Pin {
   name: string;
   bits: Bit[];
   direction: Direction;
+  signal?: string;
   /** Bit assignment shown on a schematic adapter's pin. */
   mapping?: string;
 }
@@ -28,6 +29,7 @@ export interface Part {
   type: string;
   pins: Pin[];
   child?: string;
+  interfaceOnly?: boolean;
   signal?: string;
   parameters?: Cell['parameters'];
 }
