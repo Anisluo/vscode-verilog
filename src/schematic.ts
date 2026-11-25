@@ -130,7 +130,7 @@ export class Schematic {
   private portRadices = new Map<string, Radix>();
   private groups: { shape: SVGGElement; part: Part }[] = [];
 
-  constructor(private host: HTMLElement, private onPart: (part: Part, alternate: boolean) => void, private onWire: WireMenu,
+  constructor(private host: HTMLElement, private onPart: (part: Part) => void, private onWire: WireMenu,
     private createLayoutWorker: () => Worker, private elkWorkerUrl: string) {
     new ResizeObserver(() => this.resize()).observe(host);
     host.addEventListener('wheel', event => {
@@ -311,7 +311,7 @@ export class Schematic {
     const group = svg('g', { class: 'part', 'data-name': part.name, transform: `translate(${px(box.x)},${px(box.y)})` });
     if (isAdapter(part)) group.classList.add('bus-adapter');
     const signal = part.signal ? signals.get(part.signal) : undefined;
-    const active = part.child || signal?.editable;
+    const active = part.child;
     if (signal && !active) group.addEventListener('contextmenu', event => {
       event.preventDefault(); this.onWire(signal, event.clientX, event.clientY);
     });
@@ -320,10 +320,9 @@ export class Schematic {
       group.setAttribute('tabindex', '0');
       group.setAttribute('role', 'button');
       group.setAttribute('aria-label', part.name);
-      group.addEventListener('click', () => this.onPart(part, false));
-      group.addEventListener('contextmenu', event => { event.preventDefault(); this.onPart(part, true); });
+      group.addEventListener('click', () => this.onPart(part));
       group.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.onPart(part, event.shiftKey); }
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.onPart(part); }
       });
     }
     const title = svg('title');

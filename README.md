@@ -17,7 +17,7 @@ Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更
 
 综合时界面显示阶段和已用时间，并保留上一次可用的电路图。公开版 0.2.4 的对应命令为「Verilog: 综合并打开工作台」，会直接开始综合。
 
-工作台顶部可在 **电路图**、**波形**、**诊断与日志** 之间切换。电路图支持切换 RTL 行为级和门级，点击单比特输入可改变电平。语法诊断也会显示在 VS Code 的「问题」面板。
+综合工作台提供 **电路图** 和 **诊断与日志**，支持切换 RTL 与门级。波形和仿真回放位于 Testbench 工作台。语法诊断也会显示在 VS Code 的「问题」面板。
 
 ## 查看和编辑波形
 
@@ -31,13 +31,12 @@ Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更
 | 空格 | 在波形区恢复全程显示 |
 | 左键单击 | 移动仿真光标 |
 | 拖动时间轴上的光标手柄 | 连续移动光标，靠近信号跳变时自动吸附 |
-| 右键单击输入波形 | 编辑输入激励 |
 
 ## FIFO 示例与自动仿真
 
-在电路图中将 `reset` 拉高，推进至少一个时钟上升沿，再拉低。设置 `data_in` 和 `wr_en` 写入，使用 `rd_en` 读出。切到波形视图可观察 `used`、`empty`、`full`、`rd_valid` 和 `data_out`。
+FIFO Testbench 会自动执行复位、写入、读出和满空边界检查。波形页可观察 `used`、`empty`、`full`、`rd_valid` 和 `data_out`。
 
-在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，运行 Icarus Verilog 并打开只读波形页。编译命令与 `PASS` 输出位于「诊断与日志」。需要使用自备版本时，可用 `verilogWorkbench.icarusPath` 指定包含 `iverilog` 和 `vvp` 的目录。
+在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，用 Icarus Verilog 执行行为仿真，并显示波形。切换到「电路图」可查看被测模块的 RTL，已记录的信号值随仿真光标更新。编译命令与 `PASS` 输出位于「诊断与日志」。需要使用自备版本时，可用 `verilogWorkbench.icarusPath` 指定包含 `iverilog` 和 `vvp` 的目录。
 
 其他项目可使用 `模块名_tb.v` 或 `tb_模块名.v` 命名，`.sv` 同样适用。额外设计文件使用 `verilogWorkbench.additionalSources`，顶层模块名与文件名不同时可设置 `verilogWorkbench.testbenchTop`。Testbench 需使用 `$dumpfile` 和 `$dumpvars` 在仿真目录生成一个 VCD。
 

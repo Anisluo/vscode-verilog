@@ -51,10 +51,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .run:not(.playing) .pause-icon, .run.playing .play-icon { display: none; }
 .transport-buttons, .diagram-actions { display: flex; gap: 5px; }
 .transport { display: flex; align-items: center; }
-.transport label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .transport { gap: 14px; background: #141a22; }
-.transport form { display: flex; align-items: center; gap: 10px; }
-.transport form input { width: 66px; font-family: var(--mono); }
 .transport-buttons { padding-left: 12px; border-left: 1px solid var(--line); }
 #time-readout { color: var(--accent); margin-left: auto; font: 13px var(--mono); white-space: nowrap; }
 main { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8px 9px 5px; }
@@ -134,11 +131,6 @@ main { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8
 .signal-icon rect { fill: none; stroke: var(--signal-stroke); }
 .signal-row button:hover:enabled, .part-row button:hover:enabled { background: var(--surface); border-color: var(--line); }
 .signal-row .tag { display: flex; align-items: center; gap: 3px; font: 11px var(--font); color: var(--dim); white-space: nowrap; }
-.signal-row .watched { color: var(--accent); }
-.watch-mark { width: 8px; height: 8px; background: currentColor; }
-.watch-mark[data-state="added"] { clip-path: polygon(0 47%, 15% 34%, 39% 62%, 86% 10%, 100% 24%, 39% 90%); }
-.watch-mark[data-state="available"] { clip-path: polygon(42% 6%, 58% 6%, 58% 42%, 94% 42%, 94% 58%, 58% 58%, 58% 94%, 42% 94%, 42% 58%, 6% 58%, 6% 42%, 42% 42%); }
-.watch-mark[data-state="unavailable"] { clip-path: inset(42% 6%); }
 .part-columns { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 6px; color: var(--muted); padding: 5px 8px 2px; font-size: 11px; }
 .part-delay-heading { justify-self: end; }
 .part-actions { grid-column: 2; display: flex; justify-content: flex-end; gap: 4px; white-space: nowrap; }
@@ -189,7 +181,6 @@ dialog p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 6px; }
 @media (max-width: 1050px) {
   .transport { padding-inline: 8px; gap: 6px; }
-  .transport form { gap: 5px; }
   .wave-panel .panel-header { gap: 6px; }
 }
 .synth-actions { display: flex; flex: none; white-space: nowrap; }
@@ -208,8 +199,6 @@ dialog p { margin: 0; }
 .part .bus-bar, .part.critical-part .bus-bar { stroke-width: 5; vector-effect: none; }
 .overview .part .bus-bar { stroke-width: .9px; vector-effect: non-scaling-stroke; }
 .transport { gap: 6px 10px; padding: 6px 8px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; }
-.transport form { flex-wrap: wrap; gap: 5px 8px; }
-.transport form input { width: 54px; }
 .playback { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; max-width: 100%; overflow-x: auto; }
 .transport-buttons { padding-left: 0; border: 0; }
 .transport-buttons button { padding-inline: 7px; }
@@ -294,7 +283,8 @@ dialog p { margin: 0; }
 #wave-signal-options label span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #wave-signal-options label span:last-of-type { color: var(--muted); font: 11px var(--mono); }
 
-.testbench-view :is(.workbench-header, #timing, .transport-buttons) { display: none; }
+.vscode-workbench:not(.testbench-view) .transport, .testbench-view .workbench-header { display: none; }
+.testbench-view .part-columns .part-actions, .testbench-view .part-row input { display: none; }
 
 .wave-cursor-handle {
   position: absolute;

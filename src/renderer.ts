@@ -3,15 +3,14 @@ import type { WaveTrace } from './vcd';
 import type { TestbenchResult } from './testbench';
 import { workbench } from '../vscode/src/web-platform';
 import './style.css';
-import { compile, formatValue, parseValue, radixShort } from './design';
+import { compile, radixShort } from './design';
 import type { Design, Logic, Part, Radix, Signal, Vector } from './design';
-import type { BuildOptions, Diagnostic, Source } from './protocol';
+import type { BuildOptions, BuildResult, Diagnostic, Source } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
 import type { Palette } from './schematic';
 import type { Frame, Request } from './sim-worker';
 import { defaultDelay } from './simulation';
 import { criticalPath } from './critical-path';
-import type { Duration } from './simulation';
 import { Waveform } from './wave';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -56,7 +55,6 @@ const lightPalette: Palette = { '0': '#456e8d', '1': '#168052', x: '#985a0a', z:
 function themedPalette(): Palette {
   return document.body.classList.contains('vscode-light') ? lightPalette : defaultPalette;
 }
-const clockOverrides = new Map<string, number>();
 const cellDelays = new Map<string, number>();
 let palette = themedPalette();
 
@@ -68,8 +66,9 @@ let framePaint = 0;
 let simulationError = '';
 let cursor = 0;
 let viewStart = 0;
-let stepPs = 50;
-let period = 20;
+const diagramStepPs = 50;
+let stepPs = diagramStepPs;
+const period = 20;
 let end = 2000;
 let viewSpan = end;
 const nsAt = (tick: number) => Number((tick * stepPs / 1000).toPrecision(12));
@@ -85,7 +84,7 @@ const radixFor = (signal: Signal): Radix => displayRadices.get(signal.id) ?? (si
 const viewEnd = () => Math.min(end, viewStart + viewSpan);
 const schematic = new Schematic(
   el('schematic'), handlePart,
-  (signal, x, y, aliases) => signalMenu(signal, x, y, false, aliases),
+  (signal, x, y, aliases) => signalMenu(signal, x, y, aliases),
   () => workbench.worker('layout-worker'),
   workbench.elkWorkerUrl,
 );
@@ -109,7 +108,7 @@ function setDisplayRadix(signal: Signal, format: Radix) {
   draw();
   renderInspector();
 }
-function openRadixMenu(signal: Signal, x: number, y: number) { signalMenu(signal, x, y, true); }
+function openRadixMenu(signal: Signal, x: number, y: number) { signalMenu(signal, x, y); }
 
 function setWatched(signal: Signal, watch: boolean) {
   if (watch) {
@@ -152,7 +151,7 @@ function renderWaveSignalPicker() {
   if (!signals.length) options.textContent = design || trace ? '没有匹配的可观察信号。' : testbenchView ? '尚未载入波形。' : '请先综合设计。';
 }
 
-function signalMenu(signal: Signal, x: number, y: number, radixOnly = false, aliases?: Signal[]) {
+function signalMenu(signal: Signal, x: number, y: number, aliases?: Signal[]) {
   if (!signal.bits) return;
   const menu = el('signal-menu');
   const title = document.createElement('div');
@@ -164,7 +163,7 @@ function signalMenu(signal: Signal, x: number, y: number, radixOnly = false, ali
     variable.setAttribute('aria-label', '选择导线上的变量');
     for (const alias of aliases) variable.add(new Option(alias.name, alias.id));
     variable.value = signal.id;
-    variable.onchange = () => signalMenu(aliases.find(s => s.id === variable.value)!, x, y, radixOnly, aliases);
+    variable.onchange = () => signalMenu(aliases.find(s => s.id === variable.value)!, x, y, aliases);
     menu.replaceChildren(variable);
   }
   const action = (label: string, run: () => void, checked?: boolean) => {
@@ -176,12 +175,6 @@ function signalMenu(signal: Signal, x: number, y: number, radixOnly = false, ali
     item.onclick = () => { menu.hidden = true; run(); };
     menu.append(item);
   };
-  const added = watched.has(signal.id);
-  if (!radixOnly) action(added ? '从波形观察窗移除' : '添加到波形观察窗', () => {
-    setWatched(signal, !added);
-    renderInspector();
-    if (!added) el('wave-scroll').scrollTop = el('wave-scroll').scrollHeight;
-  });
   for (const [format, label] of Object.entries(radixLabels) as [Radix, string][]) {
     if (format === 'real' && signal.width !== 32 && signal.width !== 64) continue;
     action(label, () => setDisplayRadix(signal, format), radixFor(signal) === format);
@@ -325,7 +318,7 @@ async function synthesize() {
     else {
       watched = new Set(design.signals.filter(signal => signal.direction && (signal.editable || !signal.name.includes('.'))).slice(0, 16).map(signal => signal.id));
       cursor = viewStart = 0; viewSpan = end;
-      clockOverrides.clear(); cellDelays.clear();
+      cellDelays.clear();
       displayRadices.clear();
     }
     frame = undefined;
@@ -385,7 +378,11 @@ function bindWorkbenchTabs() {
       visible[next].focus();
     };
   }
-  if (testbenchView) button('view-diagram').hidden = true;
+  if (!testbenchView) button('view-wave').hidden = true;
+  else {
+    button('mode-gate').hidden = true;
+    el('schematic').querySelector('.empty')!.textContent = '正在准备被测模块的 RTL 电路图…';
+  }
   selectWorkbenchTab(button(testbenchView ? 'view-wave' : 'view-diagram'));
 }
 
@@ -453,28 +450,13 @@ function renderInspector() {
     const name = document.createElement('span');
     name.className = 'signal-name';
     name.textContent = signal.name;
-    const tag = document.createElement('button');
-    tag.type = 'button';
+    const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.disabled = !signal.bits;
     const kind = signal.clock ? 'clock' : signal.direction;
     if (kind === 'clock' || kind === 'input' || kind === 'output') control.append(signalIcon(kind));
-    const watchMark = document.createElement('span');
-    watchMark.className = 'watch-mark';
-    watchMark.setAttribute('aria-hidden', 'true');
-    tag.append(`${kind === 'inout' ? '双向 ' : ''}${signal.width}b`, watchMark);
+    tag.textContent = `${kind === 'inout' ? '双向 ' : ''}${signal.width}b`;
     control.append(name);
     control.onclick = () => selectSignal(signal, control);
-    const updateWatch = () => {
-      const active = watched.has(signal.id);
-      tag.setAttribute('aria-pressed', String(active));
-      tag.title = active ? '从波形移除' : '添加到波形';
-      tag.setAttribute('aria-label', `${tag.title}：${signal.name}`);
-      watchMark.dataset.state = signal.bits ? (active ? 'added' : 'available') : 'unavailable';
-      tag.classList.toggle('watched', active);
-    };
-    updateWatch();
-    tag.onclick = () => { setWatched(signal, !watched.has(signal.id)); updateWatch(); };
     li.append(control, tag);
     if (signal.bits) {
       const display = document.createElement('button');
@@ -553,7 +535,7 @@ function refreshCriticalPath() {
   const result = criticalPath(design, scope, cellDelays);
   if ('path' in result) {
     const { ticks, steps } = result.path;
-    const ps = ticks * stepPs;
+    const ps = ticks * diagramStepPs;
     label.textContent = 'Critical Path · ' + (ps >= 1000 ? ps / 1000 + ' ns' : ps + ' ps');
     label.title = ticks + ' 个仿真间隔\n' + steps.join(' → ');
     schematic.setCriticalPath(result.path);
@@ -585,7 +567,7 @@ function bindWorker() {
 }
 
 function request(mutation?: Request['mutation']) {
-  if (!design) return;
+  if (!design || testbenchView) return;
   const data: Request = { version: ++version, mutation, view: {
     cursor, start: viewStart, end: viewEnd(), watched: watchedSignals().map(({ id, bits }) => ({ id, bits })),
   } };
@@ -608,10 +590,82 @@ function traceFrame(source: WaveTrace, signals: Signal[]): Frame {
   }
   return { version, cursor, computed: source.end, waveEnd: source.end, values, waves };
 }
+let traceDiagramSignals: { signal: Signal; dumped: Signal }[] = [];
+function linkTraceDiagram(source: WaveTrace, diagram: Design) {
+  const byName = new Map(source.signals.map(signal => [signal.name, signal]));
+  const ports = diagram.signals.filter(signal => signal.direction && !signal.name.includes('.'));
+  const prefixes = new Set(source.signals.map(signal => signal.name.slice(0, signal.name.lastIndexOf('.') + 1)));
+  let prefix = '';
+  let matches = 0;
+  for (const candidate of prefixes) {
+    const score = ports.filter(port => byName.get(candidate + port.name)?.width === port.width).length;
+    if (score > matches || (score === matches && score > 0 && candidate && !prefix)) {
+      prefix = candidate;
+      matches = score;
+    }
+  }
+  if (!matches) return [];
+  return diagram.signals.flatMap(signal => {
+    const dumped = byName.get(prefix + signal.name);
+    return signal.bits && dumped?.width === signal.width ? [{ signal, dumped }] : [];
+  });
+}
+function traceDiagramValues(source: WaveTrace): Vector {
+  const values: Vector = [];
+  for (const { signal, dumped } of traceDiagramSignals) {
+    const changes = source.waves[dumped.id];
+    const current = changes[changeAt(changes, cursor)]?.value;
+    if (!current) continue;
+    signal.bits?.forEach((bit, index) => {
+      if (typeof bit === 'number') values[bit] = current[index];
+    });
+  }
+  return values;
+}
+function loadTestbenchDiagram(result?: BuildResult) {
+  if (!result?.ok || !result.netlist || !result.top) {
+    el('schematic').querySelector('.empty')!.textContent = 'RTL 电路图不可用。请确认已提供被测模块源码，或查看诊断与日志。';
+    return;
+  }
+  design = compile(result.netlist, result.top, result.sourceNetlist);
+  if (trace) traceDiagramSignals = linkTraceDiagram(trace, design);
+  scopes = [design.root];
+  renderInspector();
+  void showScope();
+}
+function traceClock() {
+  return trace?.signals.find(signal => signal.clock && signal.width === 1);
+}
+function nextTracePoint(clockOnly: boolean) {
+  if (!trace) return;
+  let next = trace.end;
+  const clock = traceClock();
+  const signals = clockOnly ? (clock ? [clock] : []) : watchedSignals();
+  for (const signal of signals) {
+    const changes = trace.waves[signal.id];
+    const index = changeAt(changes, cursor) + 1;
+    if (!clockOnly) next = Math.min(next, changes[index]?.time ?? next);
+    else {
+      for (let i = Math.max(1, index); i < changes.length; i++) {
+        if (changes[i - 1].value[0] === '0' && changes[i].value[0] === '1') {
+          next = changes[i].time;
+          break;
+        }
+      }
+    }
+  }
+  seek(next);
+}
+
 function loadTestbench(result?: TestbenchResult) {
   if (!result) { status('正在运行 Icarus Verilog…'); return; }
-  el('log').textContent = result.log;
+  el('log').textContent = result.diagram ? `[Icarus Testbench]
+${result.log}
+
+[RTL Synthesis]
+${result.diagram.log}` : result.log;
   if (!result.trace) {
+    loadTestbenchDiagram(result.diagram);
     status('Testbench 运行失败，请查看日志。', true);
     selectWorkbenchTab(button('view-log'));
     return;
@@ -622,6 +676,7 @@ function loadTestbench(result?: TestbenchResult) {
     ? result.trace.signals.map(signal => ({ ...signal, name: signal.name.slice(prefix.length) }))
     : result.trace.signals };
   stepPs = trace.stepPs;
+  loadTestbenchDiagram(result.diagram);
   viewSpan = end = Math.max(1, trace.end);
   cursor = viewStart = 0;
   const rootDepth = Math.min(...trace.signals.map(signal => signal.name.split('.').length));
@@ -635,16 +690,17 @@ function draw() {
   const signals = watchedSignals();
   const displayFrame = trace ? traceFrame(trace, signals) : frame;
   const displayCursor = displayFrame?.cursor ?? cursor;
-  const values = frame?.values ?? [];
+  const values = trace ? traceDiagramValues(trace) : frame?.values ?? [];
   schematic.update(values, palette, radixFor, chipType);
-  waveform.update({ signals, start: viewStart, end: viewEnd(), cursor: displayCursor, stepPs, frame: displayFrame, palette, radixFor });
+  if (testbenchView) waveform.update({ signals, start: viewStart, end: viewEnd(), cursor: displayCursor, stepPs, frame: displayFrame, palette, radixFor });
   el('time-readout').textContent = `${nsAt(displayCursor)} / ${nsAt(end)} ns`;
   el('preview').textContent = trace ? `VCD · ${nsAt(trace.end)} ns` : !design ? '' : simulationError ? '仿真不可用' : (frame?.computed ?? -1) < viewEnd()
     ? `预览计算中 · ${Math.max(0, nsAt(frame?.computed ?? 0))} ns`
     : `已计算至 ${nsAt(Math.min(end, frame!.computed))} ns`;
-  for (const name of ['step', 'cycle', 'play', 'rewind']) button(name).disabled = !design || !!simulationError;
-  button('step').disabled ||= playing;
-  button('cycle').disabled ||= playing;
+  button('play').disabled = !trace;
+  button('rewind').disabled = !trace;
+  button('step').disabled = !trace || playing || cursor >= end;
+  button('cycle').disabled = !traceClock() || playing || cursor >= end;
 }
 
 function setView(start: number, span: number) {
@@ -670,12 +726,12 @@ function stop() {
   clearInterval(playTimer);
   button('play').classList.remove('playing');
   el('play-label').textContent = '运行';
-  button('step').disabled = !design || !!simulationError;
-  button('cycle').disabled = !design || !!simulationError;
+  button('step').disabled = !trace || cursor >= end;
+  button('cycle').disabled = !traceClock() || cursor >= end;
 }
 function toggleRun() {
   if (playing) { stop(); return; }
-  if (!design || simulationError) return;
+  if (!trace) return;
   if (cursor >= end) seek(0);
   playing = true;
   button('play').classList.add('playing');
@@ -684,11 +740,11 @@ function toggleRun() {
   button('cycle').disabled = true;
   let last = performance.now();
   let accruedPs = 0;
+  const rate = Math.max(playbackNsPerSecond, nsAt(end) / 8);
   playTimer = setInterval(() => {
     const now = performance.now();
-    accruedPs += (now - last) * playbackNsPerSecond;
+    accruedPs += (now - last) * rate;
     last = now;
-    if (frame?.cursor !== cursor || frame.computed < cursor) return;
     if (cursor >= end) { stop(); return; }
     const ticks = Math.floor(accruedPs / stepPs);
     if (ticks) {
@@ -698,105 +754,12 @@ function toggleRun() {
   }, 30);
 }
 
-function shownValue(signal: Signal, time: number) {
-  if (!frame || frame.computed < time) return undefined;
-  const bits = signal.bits ?? [];
-  if (frame.cursor === time && (frame.values.length || bits.every(bit => typeof bit !== 'number'))) {
-    return bits.map(bit => typeof bit === 'number' ? frame!.values[bit] : bit);
-  }
-  if (time > frame.waveEnd) return undefined;
-  return frame.waves[signal.id]?.findLast(change => change.time <= time)?.value;
+function handlePart(part: Part) {
+  if (part.child) { scopes.push(part.child); showScope(); }
 }
-function submitEdit(signal: Signal, time: number, value: Vector, duration: Duration) {
-  const start = duration === 'period' ? time - time % period : time;
-  cursor = Math.min(cursor, start);
-  simulationError = '';
-  request({ type: 'edit', id: signal.id, time, value, duration });
-  status(`已更新 ${signal.name} · 从 ${nsAt(start)} ns 重算预览`);
+function handleWave(time: number, _signal?: Signal, alternate = false) {
+  if (trace && !alternate && !playing) seek(time);
 }
-function handlePart(part: Part, alternate: boolean) {
-  if (part.child) { scopes.push(part.child); showScope(); return; }
-  const signal = design?.signals.find(item => item.id === part.signal);
-  if (!signal?.editable || simulationError) return;
-  if (signal.clock) { showClock(signal); return; }
-  const time = cursor;
-  const value = shownValue(signal, time);
-  if (signal.width === 1 && !alternate && value) submitEdit(signal, time, [value[0] === '1' ? '0' : '1'], 'end');
-  else showValue(signal, time, 'end', true, value);
-}
-function handleWave(time: number, signal?: Signal, alternate = false) {
-  if ((!design && !trace) || simulationError || playing) return;
-  if (!alternate) { seek(time); return; }
-  if (!signal?.editable || signal.clock) return;
-  showValue(signal, time, 'period', false, shownValue(signal, time));
-}
-
-let editing: { signal: Signal; time: number; diagram: boolean; changedRadix: boolean } | undefined;
-let valueBase: Radix = 'bin';
-function showValue(signal: Signal, time: number, duration: Duration, diagram: boolean, value?: Vector) {
-  editing = { signal, time, diagram, changedRadix: false };
-  el('value-title').textContent = signal.name + ' · ' + signal.width + ' bit';
-  el('value-time').textContent = nsAt(time) + ' ns' + (diagram ? ' · 生效至结束' : '');
-  el('value-duration-label').hidden = diagram;
-  select('value-duration').value = duration;
-  valueBase = radixFor(signal);
-  if (value?.some(bit => bit === 'x' || bit === 'z')) valueBase = 'bin';
-  const radix = select('value-radix');
-  radix.querySelector<HTMLOptionElement>('[value="real"]')!.disabled = signal.width !== 32 && signal.width !== 64;
-  radix.value = valueBase;
-  input('value-input').value = value ? formatValue(value, valueBase) : '';
-  el('value-error').textContent = '';
-  dialog('value-dialog').showModal();
-  input('value-input').focus();
-  input('value-input').select();
-}
-on('value-radix', 'change', () => {
-  if (!editing) return;
-  const next = select('value-radix').value as Radix;
-  editing.changedRadix = true;
-  try {
-    const value = parseValue(input('value-input').value, editing.signal.width, valueBase);
-    input('value-input').value = formatValue(value, next);
-  } catch { /* Keep unfinished input while selecting a new radix. */ }
-  valueBase = next;
-});
-el<HTMLFormElement>('value-form').onsubmit = event => {
-  event.preventDefault();
-  if (!editing) return;
-  try {
-    const { signal, time, diagram } = editing;
-    const value = parseValue(input('value-input').value, signal.width, valueBase);
-    if (editing.changedRadix) setDisplayRadix(signal, valueBase);
-    const duration = diagram ? 'end' : select('value-duration').value as Duration;
-    submitEdit(signal, time, value, duration);
-    dialog('value-dialog').close();
-  } catch (error) { el('value-error').textContent = (error as Error).message; }
-};
-
-let clockTarget: Signal | undefined;
-function showClock(signal: Signal) {
-  clockTarget = signal;
-  el('clock-title').textContent = signal.name + ' · 时钟输入';
-  const ticks = clockOverrides.get(signal.id);
-  input('clock-period').value = ticks === undefined ? '' : String(nsAt(ticks));
-  el('clock-error').textContent = '';
-  dialog('clock-dialog').showModal();
-}
-el<HTMLFormElement>('clock-form').onsubmit = event => {
-  event.preventDefault();
-  if (!clockTarget) return;
-  const value = input('clock-period').value === '' ? undefined : Math.round(input('clock-period').valueAsNumber * 1000) / stepPs;
-  if (value !== undefined && (!Number.isSafeInteger(value) || value < 2 || value % 2)) {
-    el('clock-error').textContent = '时钟周期应为仿真间隔的正偶数倍。';
-    return;
-  }
-  if (value === undefined) clockOverrides.delete(clockTarget.id);
-  else clockOverrides.set(clockTarget.id, value);
-  simulationError = '';
-  request({ type: 'clock', id: clockTarget.id, period: value });
-  status('已更新时钟，从 0 ns 重算预览。');
-  dialog('clock-dialog').close();
-};
 
 function renderPalette() {
   const names = { '0': '0 · 低电平', '1': '1 · 高电平', x: 'X · 不确定', z: 'Z · 高阻' };
@@ -893,8 +856,8 @@ on('show-parts', 'click', () => { inspector = 'parts'; renderInspector(); });
 on('signal-filter', 'input', renderInspector);
 on('wave-signal-filter', 'input', renderWaveSignalPicker);
 on('rewind', 'click', () => { stop(); seek(0); });
-on('step', 'click', () => seek(cursor + 1));
-on('cycle', 'click', () => seek(cursor + period));
+on('step', 'click', () => nextTracePoint(false));
+on('cycle', 'click', () => nextTracePoint(true));
 on('play', 'click', toggleRun);
 on('diagram-fit', 'click', () => schematic.fit());
 on('critical-path', 'click', () => {
@@ -928,54 +891,6 @@ function changeAllDelays(zero: boolean) {
 }
 on('zero-delays', 'click', () => changeAllDelays(true));
 on('reset-delays', 'click', () => changeAllDelays(false));
-on('value-cancel', 'click', () => dialog('value-dialog').close());
-on('clock-cancel', 'click', () => dialog('clock-dialog').close());
-const timingForm = el<HTMLFormElement>('timing');
-let timingTimer: ReturnType<typeof setTimeout> | undefined;
-function applyTiming() {
-  clearTimeout(timingTimer);
-  const invalid = timingForm.querySelector<HTMLInputElement>('input:invalid');
-  const step = input('step-size').valueAsNumber;
-  const nextEnd = Math.round(input('end').valueAsNumber * 1000) / step;
-  const nextPeriod = Math.round(input('period').valueAsNumber * 1000) / step;
-  let error = '';
-  if (invalid) error = (invalid.labels?.[0]?.textContent?.trim() ?? '') + '：' + invalid.validationMessage;
-  else if (!Number.isSafeInteger(nextPeriod) || nextPeriod < 2 || nextPeriod % 2) error = '时钟周期应为仿真间隔的正偶数倍。';
-  else if (!Number.isSafeInteger(nextEnd) || nextEnd < 1 || nextEnd > 100_000) error = '结束时间应为仿真间隔的整数倍，范围为 1 至 100,000 个间隔。';
-  if (error) {
-    timingForm.dataset.error = error;
-    status(error, true);
-    return;
-  }
-  const previousError = timingForm.dataset.error;
-  delete timingForm.dataset.error;
-  if (step === stepPs && nextPeriod === period && nextEnd === end) {
-    if (previousError && el('status').textContent === previousError) status('时间设置已生效。');
-    return;
-  }
-  stop();
-  const resetInputs = stepPs !== step;
-  stepPs = step; period = nextPeriod; end = nextEnd;
-  refreshCriticalPath();
-  if (resetInputs) { cursor = 0; clockOverrides.clear(); }
-  cursor = Math.min(cursor, end);
-  viewStart = 0; viewSpan = end;
-  frame = undefined; simulationError = '';
-  draw();
-  request({ type: 'timing', timing: simTiming(), resetInputs });
-  status(resetInputs ? '仿真间隔已变更，输入激励已重置。' : '已更新时间设置。');
-}
-// Let multi-digit edits settle before rescaling time and resetting the stimulus.
-timingForm.oninput = () => {
-  clearTimeout(timingTimer);
-  timingTimer = setTimeout(applyTiming, 450);
-};
-timingForm.onchange = applyTiming;
-timingForm.onkeydown = event => {
-  if (event.key === 'Enter') { event.preventDefault(); applyTiming(); }
-};
-timingForm.onsubmit = event => { event.preventDefault(); applyTiming(); };
-
 split('inspect-split', '--inspect-width', event => Math.max(174, Math.min(innerWidth - 580, innerWidth - event.clientX - 9)));
 bindWorkbenchTabs();
 new MutationObserver(() => {

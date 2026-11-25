@@ -3,12 +3,13 @@ import { basename, delimiter, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { run } from './backend';
 import { parseVcd } from './vcd';
-import type { Source } from './protocol';
+import type { BuildResult, Source } from './protocol';
 import type { WaveTrace } from './vcd';
 
 export interface TestbenchResult {
   log: string;
   trace?: WaveTrace;
+  diagram?: BuildResult;
 }
 
 export async function runTestbench(sources: Source[], top: string, bin?: string): Promise<TestbenchResult> {

@@ -152,7 +152,19 @@ export function activate(context: vscode.ExtensionContext) {
         return { id: uri.toString(), name: basename(uri.fsPath), path: uri.fsPath, text: document.getText() };
       }));
       const bin = root ? resolve(folder, root) : await bundled(join('icarus', 'bin'), ['iverilog.exe', 'vvp.exe']);
-      result = await runTestbench(snapshot, top, bin);
+      const hdlRoot = config.get<string>('toolchainPath', '').trim();
+      const hdl = hdlRoot ? resolve(folder, hdlRoot)
+        : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
+      const designSources = snapshot.filter(source => source.id !== bench.toString());
+      const [simulation, diagram] = await Promise.all([
+        runTestbench(snapshot, top, bin),
+        designSources.some(source => inputFile.test(source.name))
+          ? hdlJob(designSources, {
+            standard: '1800-2023', top: '', mode: 'rtl', hierarchy: true, optimize: true,
+            observe: true, abc: false, includes: [], defines: [], parameters: [],
+          }, false, hdl) : undefined,
+      ]);
+      result = { ...simulation, diagram };
     } catch (error) {
       result = { log: String(error) };
     }

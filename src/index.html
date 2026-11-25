@@ -25,16 +25,11 @@
         <button id="view-log" role="tab" aria-controls="log-pane" aria-selected="false" tabindex="-1">诊断与日志</button>
       </div>
       <section class="transport" aria-label="仿真控制">
-    <form id="timing">
-      <label>仿真间隔<input id="step-size" type="number" min="1" max="1000000" value="50" required><span>ps</span></label>
-      <label>时钟周期<input id="period" type="number" min="0.002" step="0.001" max="10000000" value="1" required><span>ns</span></label>
-      <label>结束时间<input id="end" type="number" min="0.001" step="0.001" max="1000000000" value="100" required><span>ns</span></label>
-    </form>
     <div class="playback">
       <div class="transport-buttons">
-        <button id="rewind" class="icon-button" title="回到 0 ns，保留激励" aria-label="回到零"><svg class="button-icon filled-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/></svg></button>
-        <button id="step" class="icon-button" title="前进一个仿真间隔" aria-label="单步"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4l5 4-5 4 M12 4v8"/></svg></button>
-        <button id="cycle" class="icon-button" title="前进一个时钟周期" aria-label="整周期"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4l5 4-5 4 M10 4v8 M14 4v8"/></svg></button>
+        <button id="rewind" class="icon-button" title="返回仿真起点" aria-label="回到零"><svg class="button-icon filled-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/></svg></button>
+        <button id="step" class="icon-button" title="跳到下一次信号变化" aria-label="单步"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4l5 4-5 4 M12 4v8"/></svg></button>
+        <button id="cycle" class="icon-button" title="跳到下一个时钟上升沿" aria-label="整周期"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4l5 4-5 4 M10 4v8 M14 4v8"/></svg></button>
         <button id="play" class="run"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="play-icon" d="M3 1.5 14 8 3 14.5Z"/><g class="pause-icon"><rect x="3" y="2" width="3.5" height="12"/><rect x="9.5" y="2" width="3.5" height="12"/></g></svg><span id="play-label">运行</span></button>
       </div>
       <output id="time-readout" aria-label="当前时间 / 总时间">0 / 100 ns</output>
@@ -82,7 +77,7 @@
         <span id="preview"></span><div class="spacer"></div>
         <button id="wave-fit" class="fit-view" title="显示全程波形（空格）" aria-label="显示全程波形" aria-keyshortcuts="Space"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3 M10 3h3v3 M13 10v3h-3 M6 13H3v-3"/></svg></button>
       </div>
-      <div id="wave-scroll"><canvas id="wave" aria-label="信号波形。滚轮缩放，左键横向拖选放大，右键拖动平移，空格恢复全程。左键单击移动光标，右键单击编辑输入激励。" tabindex="0"></canvas></div>
+      <div id="wave-scroll"><canvas id="wave" aria-label="信号波形。滚轮缩放，左键横向拖选放大，右键拖动平移，空格恢复全程。左键单击移动光标。" tabindex="0"></canvas></div>
     </section>
     <section id="log-pane" role="tabpanel" aria-labelledby="view-log" tabindex="0" hidden>
       <div id="diagnostics"></div><pre id="log"></pre>
@@ -120,21 +115,6 @@
       <div class="dialog-actions"><button class="primary">完成</button></div>
     </form>
   </dialog>
-  <dialog id="value-dialog">
-    <form id="value-form">
-      <h2 id="value-title">输入激励</h2><p id="value-time"></p>
-      <div class="dialog-grid"><label>进制<select id="value-radix"><option value="bin">二进制</option><option value="hex">十六进制</option><option value="uint">无符号十进制</option><option value="int">有符号十进制</option><option value="real">Real（IEEE 754）</option></select></label>
-      <label>数值<input id="value-input" spellcheck="false" required></label></div>
-      <label id="value-duration-label">生效范围<select id="value-duration"><option value="step">仿真间隔</option><option value="period">所在周期</option><option value="end">至结束</option></select></label>
-      <p id="value-error" class="error" role="alert"></p>
-      <div class="dialog-actions"><button type="button" id="value-cancel">取消</button><button type="submit" class="primary">应用</button></div>
-    </form>
-  </dialog>
-  <dialog id="clock-dialog"><form id="clock-form">
-    <h2 id="clock-title">时钟输入</h2><label>独立时钟周期（ns）<input id="clock-period" type="number" min="0.002" step="0.001" placeholder="留空使用顶部时钟周期"></label>
-    <p id="clock-error" class="error"></p>
-    <div class="dialog-actions"><button type="button" id="clock-cancel">取消</button><button type="submit" class="primary">应用</button></div>
-  </form></dialog>
   <script src="renderer.js"></script>
 </body>
 </html>
