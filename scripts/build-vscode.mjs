@@ -15,6 +15,6 @@ await Promise.all([
   build({ ...browser, entryPoints: { renderer: 'src/renderer.ts' }, format: 'esm' }),
   build({ ...browser, entryPoints: { 'sim-worker': 'src/sim-worker.ts', 'layout-worker': 'src/layout-worker.ts' }, format: 'iife' }),
   cp(new URL('../node_modules/elkjs/lib/elk-worker.min.js', import.meta.url), new URL('../vscode/dist/elk-worker.js', import.meta.url)),
-  ...['src/index.html', 'src/color-disc-icon.png', 'LICENSE'].map(path => cp(new URL('../' + path, import.meta.url),
+  ...['src/index.html', 'LICENSE'].map(path => cp(new URL('../' + path, import.meta.url),
     new URL('../vscode/' + (path.startsWith('src/') ? 'dist/' + path.slice(4) : path), import.meta.url))),
 ]);

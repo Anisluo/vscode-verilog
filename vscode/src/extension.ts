@@ -270,7 +270,6 @@ function webviewHtml(webview: vscode.Webview, assets: vscode.Uri, template: stri
   return (testbench ? template.replace('class="vscode-workbench"', 'class="vscode-workbench testbench-view"') : template)
     .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]+/, '$1' + csp)
     .replace('href="renderer.css"', `href="${uri('renderer.css')}"`)
-    .replace('src="color-disc-icon.png"', `src="${uri('color-disc-icon.png')}"`)
     .replace('<script src="renderer.js"></script>',
       `<div id="worker-assets" hidden data-sim-worker="${uri('sim-worker.js')}" data-layout-worker="${uri('layout-worker.js')}" data-elk-worker="${uri('elk-worker.js')}"></div>
        <script nonce="${nonce}" type="module" src="${uri('renderer.js')}"></script>`);

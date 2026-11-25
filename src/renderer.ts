@@ -51,17 +51,13 @@ const probes = new Map<string, Signal>();
 const displayRadices = new Map<string, Radix>();
 let chipType = '';
 let inspector: 'signals' | 'parts' = 'signals';
+let selectedSignalId: string | undefined;
 const lightPalette: Palette = { '0': '#456e8d', '1': '#168052', x: '#985a0a', z: '#7545a1' };
-const customPalette: Partial<Palette> = {};
 function themedPalette(): Palette {
-  return { ...(document.body.classList.contains('vscode-light') ? lightPalette : defaultPalette), ...customPalette };
+  return document.body.classList.contains('vscode-light') ? lightPalette : defaultPalette;
 }
 const clockOverrides = new Map<string, number>();
 const cellDelays = new Map<string, number>();
-try {
-  const saved = JSON.parse(localStorage.getItem('verilog-palette') ?? '{}');
-  for (const state of Object.keys(defaultPalette) as Logic[]) if (/^#[0-9a-f]{6}$/i.test(saved[state] ?? '')) customPalette[state] = saved[state];
-} catch { /* Defaults also work when storage is unavailable. */ }
 let palette = themedPalette();
 
 const worker = workbench.worker('sim-worker');
@@ -298,6 +294,8 @@ async function synthesize() {
     const sameTop = nextDesign.root === design?.root && !simulationError;
     stop();
     design = nextDesign;
+    if (!sameTop) selectedSignalId = undefined;
+    schematic.highlightSignal(nextDesign.signals.find(signal => signal.id === selectedSignalId));
     for (const id of probes.keys()) displayRadices.delete(id);
     probes.clear();
     buildRevision = revision;
@@ -388,6 +386,24 @@ function signalIcon(kind: keyof typeof signalGlyphs) {
   return icon;
 }
 
+function selectSignal(signal: Signal, control: HTMLButtonElement) {
+  selectedSignalId = selectedSignalId === signal.id ? undefined : signal.id;
+  el('signals').querySelector('.signal-control[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false');
+  control.setAttribute('aria-pressed', String(!!selectedSignalId));
+  schematic.highlightSignal(selectedSignalId ? signal : undefined);
+  if (!selectedSignalId || !design) return;
+  let scope = design.scopes.find(item => item.signalIds.includes(signal.id));
+  if (!scope || scope.id === scopes.at(-1)) return;
+  const path: string[] = [];
+  while (scope) {
+    const childId: string = scope.id;
+    path.unshift(childId);
+    scope = design.scopes.find(item => item.parts.some(part => part.child === childId));
+  }
+  scopes = path;
+  showScope();
+}
+
 function renderInspector() {
   const filter = input('signal-filter').value.trim().toLowerCase();
   const signals = (design?.signals ?? []).filter(signal => signal.name.toLowerCase().includes(filter));
@@ -405,28 +421,34 @@ function renderInspector() {
     const control = document.createElement('button');
     control.disabled = !signal.bits;
     control.className = 'signal-control';
-    control.title = signal.bits ? '点击以在波形图中添加/移除' : '该源码信号在当前网表中不可观察';
+    control.title = signal.bits ? '高亮信号布线' : '该源码信号在当前网表中不可观察';
+    control.setAttribute('aria-pressed', String(selectedSignalId === signal.id));
     const name = document.createElement('span');
     name.className = 'signal-name';
     name.textContent = signal.name;
-    const tag = document.createElement('span');
+    const tag = document.createElement('button');
+    tag.type = 'button';
     tag.className = 'tag';
+    tag.disabled = !signal.bits;
     const kind = signal.clock ? 'clock' : signal.direction;
     if (kind === 'clock' || kind === 'input' || kind === 'output') control.append(signalIcon(kind));
     const watchMark = document.createElement('span');
     watchMark.className = 'watch-mark';
     watchMark.setAttribute('aria-hidden', 'true');
     tag.append(`${kind === 'inout' ? '双向 ' : ''}${signal.width}b`, watchMark);
-    control.append(name, tag);
+    control.append(name);
+    control.onclick = () => selectSignal(signal, control);
     const updateWatch = () => {
       const active = watched.has(signal.id);
-      control.setAttribute('aria-pressed', String(active));
+      tag.setAttribute('aria-pressed', String(active));
+      tag.title = active ? '从波形移除' : '添加到波形';
+      tag.setAttribute('aria-label', `${tag.title}：${signal.name}`);
       watchMark.dataset.state = signal.bits ? (active ? 'added' : 'available') : 'unavailable';
       tag.classList.toggle('watched', active);
     };
     updateWatch();
-    control.onclick = () => { setWatched(signal, !watched.has(signal.id)); updateWatch(); };
-    li.append(control);
+    tag.onclick = () => { setWatched(signal, !watched.has(signal.id)); updateWatch(); };
+    li.append(control, tag);
     if (signal.bits) {
       const display = document.createElement('button');
       display.type = 'button';
@@ -504,7 +526,7 @@ function refreshCriticalPath() {
   if ('path' in result) {
     const { ticks, steps } = result.path;
     const ps = ticks * stepPs;
-    label.textContent = '关键路径 · ' + (ps >= 1000 ? ps / 1000 + ' ns' : ps + ' ps');
+    label.textContent = 'Critical Path · ' + (ps >= 1000 ? ps / 1000 + ' ns' : ps + ' ps');
     label.title = ticks + ' 个仿真间隔\n' + steps.join(' → ');
     schematic.setCriticalPath(result.path);
   } else {
@@ -771,60 +793,6 @@ function renderPalette() {
     return key;
   }));
 }
-const componentColors = [
-  ['input', '输入（含时钟）', '#5b8fb2', '#1b374d'], ['output', '输出', '#bb8b56', '#4a3220'],
-  ['inout', '双向端口', '#5c9c90', '#203d38'], ['other', '其他元件', '#445368', '#1c2633'],
-];
-function diagramColorControl(variable: string, name: string, initial: string) {
-  const label = document.createElement('label');
-  const control = document.createElement('input');
-  control.type = 'color';
-  let saved: string | null = null;
-  try { saved = localStorage.getItem(variable); } catch { /* Use the session color. */ }
-  control.value = saved ?? initial;
-  if (variable !== '--diagram-background' || saved !== null) {
-    document.documentElement.style.setProperty(variable, control.value);
-  }
-  control.oninput = () => {
-    document.documentElement.style.setProperty(variable, control.value);
-    try { localStorage.setItem(variable, control.value); } catch { /* Keep the session color. */ }
-  };
-  label.append(name, control);
-  return label;
-}
-const componentControls = componentColors.flatMap(([kind, name, stroke, fill]) => [
-  diagramColorControl('--' + kind + '-stroke', name + '边框', stroke),
-  diagramColorControl('--' + kind + '-fill', name + '填充', fill),
-]);
-componentControls.push(
-  diagramColorControl('--bus-outline', '总线边框', '#d4dbea'),
-  diagramColorControl('--critical-color', '关键路径', '#ff73b5'),
-  diagramColorControl('--diagram-background', '画布背景', '#121820'),
-);
-function showPalette() {
-  if (!document.documentElement.style.getPropertyValue('--diagram-background')) {
-    const background = getComputedStyle(el('schematic')).backgroundColor.match(/^rgb\((\d+), (\d+), (\d+)\)$/);
-    const control = componentControls.at(-1)?.querySelector('input');
-    if (control && background) {
-      control.value = '#' + background.slice(1).map(channel => Number(channel).toString(16).padStart(2, '0')).join('');
-    }
-  }
-  el('color-controls').replaceChildren(...(Object.keys(palette) as Logic[]).map(state => {
-    const label = document.createElement('label');
-    const control = document.createElement('input');
-    control.type = 'color'; control.value = palette[state];
-    control.oninput = () => {
-      palette[state] = customPalette[state] = control.value;
-      try { localStorage.setItem('verilog-palette', JSON.stringify(customPalette)); } catch { /* Session palette remains available. */ }
-      renderPalette(); draw();
-    };
-    label.append(state.toUpperCase(), control);
-    return label;
-  }));
-  el('color-controls').append(...componentControls);
-  dialog('color-dialog').showModal();
-}
-
 function split(id: string, variable: string, measure: (event: PointerEvent) => number) {
   const bar = el(id);
   bar.onpointerdown = event => { bar.setPointerCapture(event.pointerId); };
@@ -912,8 +880,6 @@ on('rewind', 'click', () => { stop(); seek(0); });
 on('step', 'click', () => seek(cursor + 1));
 on('cycle', 'click', () => seek(cursor + period));
 on('play', 'click', toggleRun);
-on('diagram-in', 'click', () => schematic.scale(1.25));
-on('diagram-out', 'click', () => schematic.scale(.8));
 on('diagram-fit', 'click', () => schematic.fit());
 on('critical-path', 'click', () => {
   const toggle = button('critical-path');
@@ -955,7 +921,6 @@ function changeAllDelays(zero: boolean) {
 }
 on('zero-delays', 'click', () => changeAllDelays(true));
 on('reset-delays', 'click', () => changeAllDelays(false));
-on('colors', 'click', showPalette);
 on('value-cancel', 'click', () => dialog('value-dialog').close());
 on('clock-cancel', 'click', () => dialog('clock-dialog').close());
 const timingForm = el<HTMLFormElement>('timing');

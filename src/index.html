@@ -46,11 +46,8 @@
           </div>
           <div id="scope-path"></div>
           <div class="diagram-actions">
-            <button id="critical-path" class="toggle-button" aria-pressed="false" disabled>关键路径</button>
-            <button id="diagram-out" class="icon-button" title="缩小电路图" aria-label="缩小电路图"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+            <button id="critical-path" class="toggle-button" aria-pressed="false" disabled>Critical Path</button>
             <button id="diagram-fit" class="fit-view" title="适配电路图窗口" aria-label="适配电路图窗口"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3 M10 3h3v3 M13 10v3h-3 M6 13H3v-3"/></svg></button>
-            <button id="diagram-in" class="icon-button" title="放大电路图" aria-label="放大电路图"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10"/></svg></button>
-            <button id="colors" class="palette-icon" title="配色" aria-label="配色"><img src="color-disc-icon.png" alt=""></button>
           </div>
         </div>
         <div id="schematic" role="tabpanel" aria-labelledby="mode-rtl"><div class="empty">&nbsp;综合源码后，电路图将显示在这里。</div></div>
@@ -59,7 +56,7 @@
       <div class="splitter vertical" id="inspect-split" aria-hidden="true"></div>
       <aside class="inspector panel" aria-label="信号与元件">
         <div class="panel-header with-tabs">
-          <button class="selected" id="show-signals">声明信号</button><button id="show-parts">元件清单</button>
+          <button class="selected" id="show-signals">Signal</button><button id="show-parts">元件清单</button>
           <span class="spacer"></span><span id="inspector-count"></span>
         </div>
         <div id="signal-pane">
@@ -116,10 +113,6 @@
       <div class="dialog-actions"><button value="cancel" formnovalidate>取消</button><button value="apply" class="primary">应用</button></div>
     </form>
   </dialog>
-  <dialog id="color-dialog"><form method="dialog">
-    <h2>电路图配色</h2><div id="color-controls" class="dialog-grid"></div>
-    <div class="dialog-actions"><button value="close" class="primary">完成</button></div>
-  </form></dialog>
   <dialog id="wave-signals-dialog" aria-labelledby="wave-signals-title">
     <form method="dialog">
       <h2 id="wave-signals-title">添加波形信号</h2>

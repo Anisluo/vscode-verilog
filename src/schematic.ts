@@ -33,7 +33,7 @@ function pinCaption({ pin, net }: Pick<Slot, 'pin' | 'net'>) {
   return pin.name + constant;
 }
 interface LayoutNode { box: Box; ports: Slot[]; kind: string; part: Part; barX?: number }
-interface WireShape { shapes: SVGElement[]; bits: Bit[]; title: SVGTitleElement; signal?: Signal; aliases?: Signal[] }
+interface WireShape { group?: SVGGElement; shapes: SVGElement[]; bits: Bit[]; title: SVGTitleElement; signal?: Signal; aliases?: Signal[] }
 type WireMenu = (signal: Signal, x: number, y: number, aliases?: Signal[]) => void;
 function exactAliases(net: WireNet) {
   const bits = net.signal.bits!;
@@ -119,6 +119,7 @@ export class Schematic {
   private radixFor: (signal: Signal) => Radix = signal => signal.width === 1 ? 'bin' : 'hex';
   private highlights = '';
   private critical?: CriticalPath;
+  private selectedSignal?: Signal;
   private traces = new Map<number, Trace[]>();
   private overlay?: SVGGElement;
   private wires: WireShape[] = [];
@@ -242,6 +243,7 @@ export class Schematic {
       } else this.fit();
       this.update(this.lastValues, this.palette, this.radixFor, this.highlights);
       this.setCriticalPath(this.critical);
+      this.highlightSignal(this.selectedSignal);
     };
     layout.postMessage({ elkWorkerUrl: this.elkWorkerUrl, boxes: nodes.map(node => node.box), kinds: nodes.map(node => node.kind), nodes: elkNodes, edges, groups: ends } satisfies LayoutRequest);
   }
@@ -278,7 +280,7 @@ export class Schematic {
       label.textContent = net.aliases.map(alias => alias.label).join(', ');
       labels.append(label);
     }
-    this.wires.push({ shapes, bits, title, signal: net.signal, aliases });
+    this.wires.push({ group, shapes, bits, title, signal: net.signal, aliases });
     drawing.append(group);
   }
 
@@ -452,6 +454,16 @@ export class Schematic {
       title.textContent = signal.name + ' · ' + signal.width + ' bit · ' + valueTitle(value, radixFor(signal));
     }
     for (const { shape, part } of this.groups) shape.classList.toggle('highlight', part.type === highlight);
+  }
+
+  highlightSignal(signal?: Signal) {
+    this.selectedSignal = signal;
+    const bits = new Set(signal?.bits?.filter(bit => typeof bit === 'number'));
+    for (const wire of this.wires) {
+      const selected = !!signal && (wire.signal?.id === signal.id || wire.aliases?.some(alias => alias.id === signal.id)
+        || wire.bits.some(bit => typeof bit === 'number' && bits.has(bit)));
+      wire.group?.classList.toggle('signal-route-selected', selected);
+    }
   }
 
   setCriticalPath(path?: CriticalPath) {
