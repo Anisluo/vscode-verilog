@@ -6,7 +6,9 @@
 
 ## 安装 VS Code 扩展
 
-Windows x64 使用一个 `verilog-workbench-win32-x64-*.vsix`。在桌面版 VS Code 1.96 或更新版本中，按 `Ctrl+Shift+P`，执行 **Extensions: Install from VSIX…**（从 VSIX 安装），选中该文件。Yosys、slang、ABC 和 Icarus Verilog 随扩展安装，无需配置 PATH 或工具路径。
+**[下载 0.2.4 单文件 VSIX（Windows x64）](https://github.com/Anisluo/vscode-verilog/releases/download/v0.2.4/verilog-workbench-win32-x64-0.2.4.vsix)**
+
+Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更新版本中，按 `Ctrl+Shift+P`，执行 **Extensions: Install from VSIX…**（从 VSIX 安装），选中该文件。Yosys、slang、ABC 和 Icarus Verilog 随扩展安装，无需配置 PATH 或工具路径。
 
 ## 打开工作台
 
