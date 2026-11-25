@@ -72,7 +72,7 @@ npm run package:vscode -- --hdl-root "C:/HDLTools" --icarus-root "C:/msys64/ucrt
 
 OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debian 中执行 `sudo apt install opensta`），可用 `verilogWorkbench.staWslDistro` 指定发行版。也可用 `verilogWorkbench.staExecutable` 指定本机可执行文件的绝对路径。Linux 默认从 PATH 查找 `sta`。
 
-分析自己的模块时，设置 `verilogWorkbench.staLiberty` 和 `verilogWorkbench.staSdc`。两者可以使用绝对路径或相对于工作区的路径。SDC 应包含时钟与所需的 I/O 约束，并为自包含文件。检查报告中是否有未约束端点，再解读 slack。
+分析自己的模块时，首次点击 **Run STA** 会提示选择缺少的 Liberty 和 SDC 文件。扩展会将选中的路径保存到当前工作区的 `verilogWorkbench.staLiberty` 和 `verilogWorkbench.staSdc`。两者可以使用绝对路径或相对于工作区的路径。SDC 应包含时钟与所需的 I/O 约束，并为自包含文件。检查报告中是否有未约束端点，再解读 slack。
 
 ## 生成 Xilinx 7 系列 FPGA 比特流
 

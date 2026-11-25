@@ -239,22 +239,43 @@ export function activate(context: vscode.ExtensionContext) {
           const toolchain = root ? resolve(folder ?? '', root)
             : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
           let timing: TimingOptions | undefined;
+          let timingDemo = false;
           if (message.type === 'sta') {
             const liberty = config.get<string>('staLiberty', '').trim();
             const sdc = config.get<string>('staSdc', '').trim();
             const executable = config.get<string>('staExecutable', '').trim();
             const wslDistro = config.get<string>('staWslDistro', '').trim();
-            const demo = primary?.uri.toString() === example.toString();
             const demoRoot = join(context.extensionPath, 'examples', 'sta');
-            if ((!liberty || !sdc) && (liberty || sdc || !demo)) {
-              throw new Error('请同时设置 verilogWorkbench.staLiberty 和 verilogWorkbench.staSdc，或打开内置 FIFO 示例。');
+            timingDemo = !liberty && !sdc && snapshot.length === 1 &&
+              (!options.top || options.top === 'fifo_4x8') &&
+              (document?.uri.toString() === example.toString() ||
+                (snapshot[0].name === 'fifo_4x8.v' &&
+                  snapshot[0].text.replaceAll('\r\n', '\n') === (await readFile(example.fsPath, 'utf8')).replaceAll('\r\n', '\n')));
+            let libertyPath = liberty ? resolve(folder ?? '', liberty) : undefined;
+            let sdcPath = sdc ? resolve(folder ?? '', sdc) : undefined;
+            if (timingDemo) {
+              libertyPath = join(demoRoot, 'fifo_demo.lib');
+              sdcPath = join(demoRoot, 'fifo_4x8.sdc');
+            } else {
+              const choose = async (title: string, filter: string, extension: string) =>
+                (await vscode.window.showOpenDialog({
+                  title, canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+                  defaultUri: folder ? vscode.Uri.file(folder) : undefined,
+                  filters: { [filter]: [extension] },
+                }))?.[0]?.fsPath;
+              libertyPath ??= await choose('选择目标工艺的 Liberty 文件', 'Liberty', 'lib');
+              if (libertyPath) sdcPath ??= await choose('选择当前设计的 SDC 约束文件', 'SDC', 'sdc');
+              if (!libertyPath || !sdcPath || document !== primary || target !== panel) {
+                await reply({ cancelled: true });
+                return;
+              }
+              const workspace = document && vscode.workspace.getWorkspaceFolder(document.uri);
+              if (workspace) {
+                if (!liberty) await config.update('staLiberty', libertyPath, vscode.ConfigurationTarget.WorkspaceFolder);
+                if (!sdc) await config.update('staSdc', sdcPath, vscode.ConfigurationTarget.WorkspaceFolder);
+              }
             }
-            timing = {
-              liberty: liberty ? resolve(folder ?? '', liberty) : join(demoRoot, 'fifo_demo.lib'),
-              sdc: sdc ? resolve(folder ?? '', sdc) : join(demoRoot, 'fifo_4x8.sdc'),
-              executable: executable || undefined,
-              wslDistro: wslDistro || undefined,
-            };
+            timing = { liberty: libertyPath, sdc: sdcPath, executable: executable || undefined, wslDistro: wslDistro || undefined };
           }
           let fpga: FpgaOptions | undefined;
           let bitstreamDirectory: string | undefined;
@@ -291,7 +312,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (timing) await reply({
             ok: result.ok, log: result.timingReport ?? result.log, top: result.top,
             liberty: basename(timing.liberty), sdc: basename(timing.sdc),
-            demo: !config.get<string>('staLiberty', '').trim(),
+            demo: timingDemo,
           });
           else if (fpga && bitstreamDirectory) {
             let output: string | undefined;
@@ -335,7 +356,8 @@ export function activate(context: vscode.ExtensionContext) {
   }), vscode.workspace.onDidCloseTextDocument(document => {
     if (panel && sources.some(source => source.id === document.uri.toString())) void refresh();
   }), vscode.workspace.onDidChangeConfiguration(event => {
-    if (panel && event.affectsConfiguration('verilogWorkbench')) void refresh();
+    if (panel && (event.affectsConfiguration('verilogWorkbench.additionalSources') ||
+      event.affectsConfiguration('verilogWorkbench.toolchainPath'))) void refresh();
   }), { dispose: () => panel?.dispose() });
 }
 

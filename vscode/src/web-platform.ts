@@ -49,7 +49,7 @@ export const workbench = {
   hdl: (options: BuildOptions, lint: boolean, progress?: (stage: SynthesisStage) => void) =>
     ask<BuildResult>('hdl', { options, lint }, progress),
   sta: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
-    ask<{ ok: boolean; log: string; top?: string; liberty: string; sdc: string; demo: boolean }>('sta', { options }, progress),
+    ask<{ cancelled: true } | { cancelled?: false; ok: boolean; log: string; top?: string; liberty: string; sdc: string; demo: boolean }>('sta', { options }, progress),
   fpga: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
     ask<{ output?: string; part: string; top?: string; log: string }>('fpga', { options }, progress),
   elkWorkerUrl: workerUrls[2],

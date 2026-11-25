@@ -380,6 +380,11 @@ async function runSta() {
       progress.update(label);
       el('sta-report').textContent = label;
     });
+    if (result.cancelled) {
+      el('sta-report').textContent = '未选择 STA 输入文件。点击 Run STA 重新选择，或用「Verilog: 打开 FIFO 示例」试跑内置配置。';
+      status('已取消 STA。');
+      return;
+    }
     el('sta-inputs').textContent = [result.top, result.liberty, result.sdc,
       result.demo ? 'FIFO 示例模型 · ns · 布局布线前' : 'Liberty 时间单位 · 布局布线前'].filter(Boolean).join(' · ');
     el('sta-report').textContent = result.log;
