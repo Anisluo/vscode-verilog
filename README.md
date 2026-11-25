@@ -6,7 +6,7 @@
 
 ## 安装 VS Code 扩展
 
-**[下载 0.2.4 单文件 VSIX（Windows x64）](https://github.com/Anisluo/vscode-verilog/releases/download/v0.2.4/verilog-workbench-win32-x64-0.2.4.vsix)**
+**[下载 0.2.21 单文件 VSIX（Windows x64）](https://github.com/Anisluo/vscode-verilog/releases/download/v0.2.21/verilog-workbench-win32-x64-0.2.21.vsix)**
 
 Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更新版本中，按 `Ctrl+Shift+P`，执行 **Extensions: Install from VSIX…**（从 VSIX 安装），选中该文件。Yosys、slang、ABC 和 Icarus Verilog 随扩展安装，无需配置 PATH 或工具路径。
 
@@ -15,7 +15,7 @@ Windows x64 只需下载上面这一个文件。在桌面版 VS Code 1.96 或更
 - **试用内置示例**：在受信任的 VS Code 窗口按 `Ctrl+Shift+P`，执行 **Verilog: 打开 FIFO 示例**。左侧打开 [4×8 同步 FIFO 的纯 Verilog 源码](vscode/examples/fifo_4x8.v)，右侧打开综合工作台，点击 **Synthesis** 开始综合。
 - **打开自己的设计**：在受信任的工作区打开 `.v` 或 `.sv` 文件，执行 **Verilog: 打开综合工作台**，再点击 **Synthesis**。多文件设计路径可写入 `verilogWorkbench.additionalSources`，相对路径以工作区根目录为准。综合和语法检查会读取已打开文件中的未保存内容。
 
-综合时界面显示阶段和已用时间，并保留上一次可用的电路图。公开版 0.2.4 的对应命令为「Verilog: 综合并打开工作台」，会直接开始综合。
+综合时界面显示阶段和已用时间，并保留上一次可用的电路图。
 
 综合工作台提供 **电路图** 和 **诊断与日志**，支持切换 RTL 与门级。波形和仿真回放位于 Testbench 工作台。语法诊断也会显示在 VS Code 的「问题」面板。
 
