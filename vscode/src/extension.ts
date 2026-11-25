@@ -19,7 +19,6 @@ export function activate(context: vscode.ExtensionContext) {
   let ready = false;
   let refreshVersion = 0;
   let diagnosticVersion = 0;
-  let needsBuild = false;
   const assets = vscode.Uri.joinPath(context.extensionUri, 'dist');
   const example = vscode.Uri.joinPath(context.extensionUri, 'examples', 'fifo_4x8.v');
 
@@ -36,8 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  async function refresh(build = false) {
-    needsBuild ||= build;
+  async function refresh() {
     const target = panel;
     const document = primary;
     if (!target || !document || !ready) return;
@@ -60,16 +58,13 @@ export function activate(context: vscode.ExtensionContext) {
         sources = snapshot;
         diagnostics.clear();
       }
-      const synthesize = needsBuild;
-      needsBuild = false;
-      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })), build: synthesize });
+      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })) });
     } catch (error) {
       if (target !== panel || version !== refreshVersion) return;
-      needsBuild = false;
       sources = [];
       ++diagnosticVersion;
       diagnostics.clear();
-      void target.webview.postMessage({ type: 'sources', sources, build: false });
+      void target.webview.postMessage({ type: 'sources', sources });
       void vscode.window.showErrorMessage('读取 HDL 源文件失败：' + String(error));
     }
   }
@@ -185,7 +180,6 @@ export function activate(context: vscode.ExtensionContext) {
       diagnostics.clear();
     }
     primary = document;
-    needsBuild = true;
     if (panel) {
       panel.title = 'Verilog · ' + basename(document.fileName);
       panel.reveal(vscode.ViewColumn.Beside, true);
@@ -228,7 +222,9 @@ export function activate(context: vscode.ExtensionContext) {
           const folder = primary && (vscode.workspace.getWorkspaceFolder(primary.uri)?.uri.fsPath ?? dirname(primary.fileName));
           const toolchain = root ? resolve(folder ?? '', root)
             : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
-          const result = await hdlJob(snapshot, options, lint, toolchain);
+          const result = await hdlJob(snapshot, options, lint, toolchain, lint ? undefined : stage => {
+            if (target === panel) void target.webview.postMessage({ type: 'synthesis-stage', id: message.id, stage });
+          });
           if (target === panel && version === diagnosticVersion) publish(result.diagnostics, snapshot);
           await reply(result);
         }
@@ -240,7 +236,6 @@ export function activate(context: vscode.ExtensionContext) {
       receiver.dispose();
       panel = undefined;
       ready = false;
-      needsBuild = false;
       ++refreshVersion;
       ++diagnosticVersion;
       diagnostics.clear();

@@ -5,6 +5,8 @@ export interface Source {
   text: string;
 }
 
+export type SynthesisStage = 'synthesis' | 'netlist';
+
 export interface BuildOptions {
   standard: '1364-2005' | '1800-2017' | '1800-2023';
   top: string;

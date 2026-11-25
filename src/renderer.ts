@@ -269,7 +269,24 @@ function applyDiagnostics(diagnostics: Diagnostic[]) {
   }));
 }
 
+function beginSynthesisProgress() {
+  const bar = el('synthesis-progress');
+  const stage = el('synthesis-stage');
+  const time = el('synthesis-elapsed');
+  const started = performance.now();
+  const refresh = () => { time.textContent = `已用 ${((performance.now() - started) / 1000).toFixed(1)} s`; };
+  stage.textContent = '正在准备综合…';
+  refresh();
+  bar.hidden = false;
+  const timer = setInterval(refresh, 200);
+  return {
+    update: (label: string) => { stage.textContent = label; },
+    finish: () => { clearInterval(timer); bar.hidden = true; },
+  };
+}
+
 async function synthesize() {
+  if (!hostSources.length) return;
   if (synthesisBusy) { synthesisQueued = true; return; }
   const currentOptions = options();
   const started = revision;
@@ -279,8 +296,10 @@ async function synthesize() {
   ++jobSequence;
   logMode = 'synth';
   status('正在综合…');
+  const progress = beginSynthesisProgress();
   try {
-    const result = await workbench.hdl(currentOptions, false);
+    const result = await workbench.hdl(currentOptions, false, stage =>
+      progress.update(stage === 'synthesis' ? 'Yosys 正在综合…' : '正在读取网表…'));
     if (synthesisQueued) return;
     if (started !== revision) { status('综合期间源码或设置已修改，请重新综合。'); return; }
     el('log').textContent = result.log;
@@ -290,6 +309,7 @@ async function synthesize() {
       status('综合失败，请查看诊断与日志。', true);
       return;
     }
+    progress.update('正在构建电路模型…');
     const nextDesign = compile(result.netlist, result.top, result.sourceNetlist);
     const sameTop = nextDesign.root === design?.root && !simulationError;
     stop();
@@ -311,16 +331,23 @@ async function synthesize() {
     frame = undefined;
     chipType = ''; simulationError = '';
     el('net-status').textContent = result.top + (builtMode === 'gate' ? ' · 门级' : ' · RTL');
+    progress.update('正在布局和布线…');
+    ++version;
+    const layout = showScope(true);
+    const laidOut = await layout;
+    refreshCriticalPath();
     renderInspector();
-    showScope();
     draw();
     request({ type: 'load', design, timing: simTiming() });
-    status(`综合完成 · ${design.cells.length} 个元件`);
+    if (started !== revision) status('源码或设置已变更，请重新综合。');
+    else if (!laidOut) status('网表已生成，电路图布局未完成。', true);
+    else status(`综合完成 · ${design.cells.length} 个元件`);
   } catch (error) {
     if (synthesisQueued) return;
     selectWorkbenchTab(button('view-log'));
     status(String(error), true);
   } finally {
+    progress.finish();
     synthesisBusy = false;
     if (synthesisQueued) {
       synthesisQueued = false;
@@ -500,7 +527,7 @@ function renderInspector() {
   }));
 }
 
-function showScope() {
+function showScope(keepPrevious = false) {
   if (!design) return;
   el('scope-path').replaceChildren(...scopes.map((id, index) => {
     const element = document.createElement(index === scopes.length - 1 ? 'span' : 'button');
@@ -511,8 +538,9 @@ function showScope() {
   }));
   const scope = design.scopes.find(item => item.id === scopes.at(-1))!;
   const ids = new Set(scope.signalIds);
-  void schematic.show(scope, design.signals.filter(signal => ids.has(signal.id)));
-  refreshCriticalPath();
+  const layout = schematic.show(scope, design.signals.filter(signal => ids.has(signal.id)), undefined, keepPrevious);
+  if (!keepPrevious) refreshCriticalPath();
+  return layout;
 }
 
 function refreshCriticalPath() {
@@ -850,7 +878,7 @@ for (const mode of modes) {
   tab.onclick = () => {
     if (selectedMode === mode) return;
     setModeTab(mode);
-    void synthesize();
+    if (design || synthesisBusy) void synthesize();
   };
   tab.onkeydown = event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -956,10 +984,9 @@ new MutationObserver(() => {
   renderInspector();
   draw();
 }).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-workbench.connect((sources, build) => {
+workbench.connect(sources => {
   hostSources = sources;
   inputsChanged();
-  if (build) void synthesize();
 }, loadTestbench);
 renderPalette();
 renderInspector();

@@ -89,8 +89,6 @@ main { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8
 #scope-path > :only-child { overflow: hidden; text-overflow: ellipsis; }
 #schematic { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; cursor: grab; background-size: 16px 16px; }
 #schematic.panning, #schematic.panning * { cursor: grabbing; }
-#schematic[aria-busy="true"] > * { visibility: hidden; }
-#schematic[aria-busy="true"]::after { content: "正在综合…"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); cursor: progress; }
 #schematic svg { position: absolute; inset: 0 auto auto 0; display: block; overflow: visible; user-select: none; }
 .empty { min-height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 18px; }
 .schematic-wire, .symbol-pin { fill: none; stroke-linecap: butt; }
@@ -341,3 +339,12 @@ dialog p { margin: 0; }
 }
 .net-route.signal-route-selected .bus-wire { stroke-width: calc(var(--bus-width, 3px) + 2px); }
 .net-route.signal-route-selected .junction { fill: var(--accent); }
+
+.synthesis-progress {
+  display: flex; align-items: center; gap: 9px; flex: none;
+  padding: 6px 9px; background: var(--panel); border-bottom: 1px solid var(--line);
+  color: var(--text); font-size: 12px;
+}
+.synthesis-progress progress { width: 72px; height: 8px; accent-color: var(--vscode-progressBar-background, var(--accent)); }
+.synthesis-progress time { margin-left: auto; color: var(--muted); font: 11px var(--mono); white-space: nowrap; }
+#schematic[aria-busy="true"] > svg { pointer-events: none; }

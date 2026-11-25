@@ -111,6 +111,7 @@ export class Schematic {
   private drawing?: SVGSVGElement;
   private view = { width: 1, height: 1 };
   private layout?: Worker;
+  private cancelLayout?: () => void;
   private zoom = 1;
   private manualView = false;
   private shift = { x: 0, y: 0 };
@@ -179,8 +180,8 @@ export class Schematic {
     return Math.max(7, Math.ceil((digits * 8 + 28) / grid), Math.ceil((name.length * 8 + (signal.clock ? 39 : 26)) / grid));
   }
 
-  show(scope: Scope, signals: Signal[], resizedPort?: string) {
-    const keepDrawing = !!resizedPort && !!this.drawing;
+  show(scope: Scope, signals: Signal[], resizedPort?: string, keepPrevious = false) {
+    const keepDrawing = (keepPrevious || !!resizedPort) && !!this.drawing;
     this.current = { scope, signals };
     this.portWidths.clear(); this.portRadices.clear();
     for (const signal of signals) if (signal.direction) {
@@ -188,7 +189,7 @@ export class Schematic {
       this.portWidths.set(signal.id, this.portWidth(signal, radix));
       this.portRadices.set(signal.id, radix);
     }
-    this.layout?.terminate();
+    this.cancelLayout?.();
     const placeholder = document.createElement('div');
     placeholder.className = 'empty';
     placeholder.textContent = '正在布局和布线…';
@@ -203,49 +204,68 @@ export class Schematic {
     const { nodes, elkNodes, edges, ends } = layoutNodes(parts, nets, this.portWidths);
     const layout = this.createLayoutWorker();
     this.layout = layout;
-    const done = () => { layout.terminate(); this.layout = undefined; };
-    const fail = (error: string) => { done(); placeholder.textContent = '电路图布线失败：' + error; this.host.replaceChildren(placeholder); };
-    layout.onerror = event => { if (this.layout === layout) fail(event.message); };
-    layout.onmessage = ({ data }: MessageEvent<LayoutResult>) => {
-      if (this.layout !== layout) return;
-      if ('error' in data) { fail(data.error); return; }
-      done();
-      const oldPort = keepDrawing && this.manualView ? this.groups.find(g => g.part.id === resizedPort) : undefined;
-      const oldPosition = oldPort?.shape.transform.baseVal.getItem(0).matrix;
-      this.wires = []; this.labels = []; this.groups = [];
-      this.traces.clear();
-      this.view = { width: px(data.width), height: px(data.height) };
-      const drawing = svg('svg', { 'aria-label': scope.label });
-      const labels = svg('g', { class: 'net-labels' });
-      data.routes.forEach((route, index) => {
-        this.drawWire(drawing, labels, route, nets[index]);
-        const contacts = ends[index].map(({ part, port, at }) => ({
-          part: nodes[part].part, slot: nodes[part].ports[port],
-          point: { x: data.boxes[part].x + at.point.x, y: data.boxes[part].y + at.point.y },
-        }));
-        const trace = { route, contacts };
-        for (const bit of new Set(nets[index].signal.bits)) if (typeof bit === 'number') {
-          const list = this.traces.get(bit) ?? [];
-          list.push(trace); this.traces.set(bit, list);
+    return new Promise<boolean>(resolve => {
+      const done = (success: boolean) => {
+        layout.terminate();
+        this.layout = undefined;
+        this.cancelLayout = undefined;
+        clearTimeout(timeout);
+        resolve(success);
+      };
+      this.cancelLayout = () => done(false);
+      const fail = (error: string) => {
+        done(false);
+        if (keepDrawing) return;
+        placeholder.textContent = '电路图布线失败：' + error;
+        this.host.replaceChildren(placeholder);
+      };
+      const timeout = setTimeout(() => fail('布局超过 45 秒。'), 45_000);
+      layout.onerror = event => { if (this.layout === layout) fail(event.message); };
+      layout.onmessage = ({ data }: MessageEvent<LayoutResult>) => {
+        if (this.layout !== layout) return;
+        if ('error' in data) { fail(data.error); return; }
+        try {
+          const oldPort = resizedPort && keepDrawing && this.manualView ? this.groups.find(g => g.part.id === resizedPort) : undefined;
+          const oldPosition = oldPort?.shape.transform.baseVal.getItem(0).matrix;
+          this.wires = []; this.labels = []; this.groups = [];
+          this.traces.clear();
+          this.view = { width: px(data.width), height: px(data.height) };
+          const drawing = svg('svg', { 'aria-label': scope.label });
+          const labels = svg('g', { class: 'net-labels' });
+          data.routes.forEach((route, index) => {
+            this.drawWire(drawing, labels, route, nets[index]);
+            const contacts = ends[index].map(({ part, port, at }) => ({
+              part: nodes[part].part, slot: nodes[part].ports[port],
+              point: { x: data.boxes[part].x + at.point.x, y: data.boxes[part].y + at.point.y },
+            }));
+            const trace = { route, contacts };
+            for (const bit of new Set(nets[index].signal.bits)) if (typeof bit === 'number') {
+              const list = this.traces.get(bit) ?? [];
+              list.push(trace); this.traces.set(bit, list);
+            }
+          });
+          this.overlay = svg('g', { class: 'critical-wires', 'aria-hidden': 'true' });
+          drawing.append(this.overlay);
+          drawing.append(labels);
+          nodes.forEach((node, index) => this.drawPart(drawing, { ...node, box: data.boxes[index] }, signalById, nets));
+          this.drawing = drawing;
+          this.host.replaceChildren(drawing);
+          const newPort = oldPosition ? nodes.findIndex(n => n.part.id === resizedPort) : -1;
+          if (oldPosition && newPort >= 0) {
+            this.shift.x += (oldPosition.e - px(data.boxes[newPort].x)) * this.zoom;
+            this.shift.y += (oldPosition.f - px(data.boxes[newPort].y)) * this.zoom;
+            this.resize();
+          } else this.fit();
+          this.update(this.lastValues, this.palette, this.radixFor, this.highlights);
+          this.setCriticalPath(this.critical);
+          this.highlightSignal(this.selectedSignal);
+          done(true);
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
         }
-      });
-      this.overlay = svg('g', { class: 'critical-wires', 'aria-hidden': 'true' });
-      drawing.append(this.overlay);
-      drawing.append(labels);
-      nodes.forEach((node, index) => this.drawPart(drawing, { ...node, box: data.boxes[index] }, signalById, nets));
-      this.drawing = drawing;
-      this.host.replaceChildren(drawing);
-      const newPort = oldPosition ? nodes.findIndex(n => n.part.id === resizedPort) : -1;
-      if (oldPosition && newPort >= 0) {
-        this.shift.x += (oldPosition.e - px(data.boxes[newPort].x)) * this.zoom;
-        this.shift.y += (oldPosition.f - px(data.boxes[newPort].y)) * this.zoom;
-        this.resize();
-      } else this.fit();
-      this.update(this.lastValues, this.palette, this.radixFor, this.highlights);
-      this.setCriticalPath(this.critical);
-      this.highlightSignal(this.selectedSignal);
-    };
-    layout.postMessage({ elkWorkerUrl: this.elkWorkerUrl, boxes: nodes.map(node => node.box), kinds: nodes.map(node => node.kind), nodes: elkNodes, edges, groups: ends } satisfies LayoutRequest);
+      };
+      layout.postMessage({ elkWorkerUrl: this.elkWorkerUrl, boxes: nodes.map(node => node.box), kinds: nodes.map(node => node.kind), nodes: elkNodes, edges, groups: ends } satisfies LayoutRequest);
+    });
   }
 
   private drawWire(drawing: SVGSVGElement, labels: SVGGElement, route: Route, net: WireNet) {
@@ -421,7 +441,7 @@ export class Schematic {
 
   update(values: Logic[], palette: Palette, radixFor: (signal: Signal) => Radix, highlight: string) {
     this.lastValues = values; this.palette = palette; this.radixFor = radixFor; this.highlights = highlight;
-    const resized = this.current?.signals.find(s => {
+    const resized = !this.layout && this.current?.signals.find(s => {
       if (!s.direction) return false;
       const radix = radixFor(s);
       const width = this.portWidth(s, radix);

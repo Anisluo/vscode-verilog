@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, delimiter, parse } from 'node:path';
-import type { BuildOptions, BuildResult, Diagnostic, Netlist, Source } from './protocol';
+import type { BuildOptions, BuildResult, Diagnostic, Netlist, Source, SynthesisStage } from './protocol';
 
 export function run(executable: string, args: string[], cwd: string, environment: NodeJS.ProcessEnv) {
   return new Promise<{ code: number | null; log: string }>((resolveRun, reject) => {
@@ -87,7 +87,7 @@ function diagnostics(log: string, files: Map<string, Source>) {
   return result;
 }
 
-export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string): Promise<BuildResult> {
+export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string, progress?: (stage: SynthesisStage) => void): Promise<BuildResult> {
   let workspace: string | undefined;
   try {
     workspace = await mkdtemp(join(tmpdir(), 'vscode-verilog-'));
@@ -121,10 +121,12 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
     const { args, script } = buildScript(options, inputs, [...includes], lint);
     await writeFile(join(workspace, 'job.ys'), script, 'utf8');
     await writeFile(join(workspace, 'inputs.f'), args, 'utf8');
+    progress?.('synthesis');
     const { code, log } = await run(executable, lint ? ['-F', 'inputs.f'] : ['-Q', '-T', '-s', 'job.ys'], workspace, environment);
     const result: BuildResult = { ok: code === 0, log: log || (code === 0 ? '' : `HDL 工具退出状态：${code}`), diagnostics: diagnostics(log, files) };
     if (!lint) result.log = `[job.ys]\n${script}\n\n[inputs.f]\n${args}\n\n${result.log}`;
     if (!result.ok || lint) return result;
+    progress?.('netlist');
     result.netlist = JSON.parse(await readFile(join(workspace, 'design.json'), 'utf8')) as Netlist;
     result.sourceNetlist = JSON.parse(await readFile(join(workspace, 'source.json'), 'utf8')) as Netlist;
     result.top = Object.keys(result.netlist.modules).find(name => /1$/.test(result.netlist!.modules[name].attributes?.top ?? ''));
