@@ -78,6 +78,7 @@ let end = 2000;
 let viewSpan = end;
 const nsAt = (tick: number) => Number((tick * stepPs / 1000).toPrecision(12));
 const simTiming = () => ({ period, end });
+const playbackNsPerSecond = 10;
 let playing = false;
 let playTimer: ReturnType<typeof setInterval> | undefined;
 let buildRevision = -1;
@@ -645,7 +646,7 @@ function toggleRun() {
   let accruedPs = 0;
   playTimer = setInterval(() => {
     const now = performance.now();
-    accruedPs += (now - last) * input('speed').valueAsNumber;
+    accruedPs += (now - last) * playbackNsPerSecond;
     last = now;
     if (frame?.cursor !== cursor || frame.computed < cursor) return;
     if (cursor >= end) { stop(); return; }
@@ -932,7 +933,6 @@ document.addEventListener('keydown', event => {
   event.preventDefault();
   setView(0, end);
 });
-on('speed', 'input', () => { el('speed-label').textContent = input('speed').value + ' ns/s'; });
 on('follow', 'click', () => {
   const toggle = button('follow');
   toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true'));
