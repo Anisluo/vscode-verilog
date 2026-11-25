@@ -1,0 +1,91 @@
+{
+  "name": "verilog-workbench",
+  "displayName": "Verilog Workbench",
+  "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
+  "version": "0.2.4",
+  "publisher": "verilog-workbench",
+  "author": "Anisluo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anisluo/vscode-verilog.git",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "main": "./dist/extension.cjs",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "verilogWorkbench.open",
+        "title": "综合并打开工作台",
+        "category": "Verilog"
+      },
+      {
+        "command": "verilogWorkbench.example",
+        "title": "打开 FIFO 示例",
+        "category": "Verilog"
+      },
+      {
+        "command": "verilogWorkbench.runTestbench",
+        "title": "运行 Testbench",
+        "category": "Verilog"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "verilogWorkbench.open",
+          "when": "resourceExtname =~ /^\\.(v|sv)$/i",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Verilog Workbench",
+      "properties": {
+        "verilogWorkbench.toolchainPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "OSS CAD Suite 工具链根目录，需包含 bin 下的 Yosys、slang 和 ABC。留空时自动使用扩展内置工具链，或从 VERILOG_IDE_TOOLCHAIN 和 PATH 查找。"
+        },
+        "verilogWorkbench.additionalSources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "随当前文件一起综合的其他 HDL 源文件或头文件。相对路径以工作区根目录为准。"
+        },
+        "verilogWorkbench.icarusPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "包含 iverilog 和 vvp 的 bin 目录。留空时自动使用扩展内置工具，或从 PATH 查找。"
+        },
+        "verilogWorkbench.testbenchTop": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Icarus 仿真的顶层模块名。留空时使用 testbench 文件名。"
+        }
+      }
+    }
+  }
+}
