@@ -330,6 +330,18 @@ dialog p { margin: 0; }
 .net-route.signal-route-selected .bus-wire { stroke-width: calc(var(--bus-width, 3px) + 2px); }
 .net-route.signal-route-selected .junction { fill: var(--accent); }
 
+.signal-focus .net-route:not(.signal-route-selected),
+.signal-focus .net-labels > :not(.signal-detail-selected),
+.signal-focus .critical-wires,
+.signal-focus .part:not(.signal-terminal-selected) > :not(.signal-detail-selected, .signal-pin-selected) {
+  filter: grayscale(1);
+  opacity: .32;
+}
+.signal-focus .signal-pin-selected {
+  stroke: var(--accent);
+  stroke-width: calc(var(--wire-width, 1.4px) + 1.5px);
+}
+
 .synthesis-progress {
   display: flex; align-items: center; gap: 9px; flex: none;
   padding: 6px 9px; background: var(--panel); border-bottom: 1px solid var(--line);

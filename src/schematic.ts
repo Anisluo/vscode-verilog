@@ -33,7 +33,7 @@ function pinCaption({ pin, net }: Pick<Slot, 'pin' | 'net'>) {
   return pin.name + constant;
 }
 interface LayoutNode { box: Box; ports: Slot[]; kind: string; part: Part; barX?: number }
-interface WireShape { group?: SVGGElement; shapes: SVGElement[]; bits: Bit[]; title: SVGTitleElement; signal?: Signal; aliases?: Signal[] }
+interface WireShape { group?: SVGGElement; label?: SVGTextElement; shapes: SVGElement[]; bits: Bit[]; title: SVGTitleElement; signal?: Signal; aliases?: Signal[] }
 type WireMenu = (signal: Signal, x: number, y: number, aliases?: Signal[]) => void;
 function exactAliases(net: WireNet) {
   const bits = net.signal.bits!;
@@ -305,16 +305,17 @@ export class Schematic {
       this.onWire(net.signal, event.clientX, event.clientY, aliases);
     };
     group.addEventListener('contextmenu', context);
+    let label: SVGTextElement | undefined;
     if (net.aliases.length) {
       const [a, b] = route.segments.reduce((best, next) => {
         const score = ([from, to]: [Point, Point]) => from.y === to.y ? 2 * (to.x - from.x) : to.y - from.y;
         return score(next) > score(best) ? next : best;
       });
-      const label = svg('text', { class: 'wire-label', x: px((a.x + b.x) / 2) + (a.x === b.x ? 5 : 0), y: px((a.y + b.y) / 2) - 4, 'text-anchor': a.x === b.x ? 'start' : 'middle' });
+      label = svg('text', { class: 'wire-label', x: px((a.x + b.x) / 2) + (a.x === b.x ? 5 : 0), y: px((a.y + b.y) / 2) - 4, 'text-anchor': a.x === b.x ? 'start' : 'middle' });
       label.textContent = net.aliases.map(alias => alias.label).join(', ');
       labels.append(label);
     }
-    this.wires.push({ group, shapes, bits, title, signal: net.signal, aliases });
+    this.wires.push({ group, label, shapes, bits, title, signal: net.signal, aliases });
     drawing.append(group);
   }
 
@@ -500,11 +501,23 @@ export class Schematic {
   highlightSignal(signal?: Signal) {
     this.selectedSignal = signal;
     const bits = new Set(signal?.bits?.filter(bit => typeof bit === 'number'));
+    const matches = (wires: Bit[] | undefined, candidate?: Signal) => !!signal &&
+      (candidate?.id === signal.id || !!wires?.some(bit => typeof bit === 'number' && bits.has(bit)));
+    let visible = false;
     for (const wire of this.wires) {
-      const selected = !!signal && (wire.signal?.id === signal.id || wire.aliases?.some(alias => alias.id === signal.id)
-        || wire.bits.some(bit => typeof bit === 'number' && bits.has(bit)));
+      const selected = matches(wire.bits, wire.signal) || !!wire.aliases?.some(alias => matches(undefined, alias));
+      visible ||= selected;
       wire.group?.classList.toggle('signal-route-selected', selected);
+      wire.label?.classList.toggle('signal-detail-selected', selected);
+      if (!wire.group) for (const shape of wire.shapes) shape.classList.toggle('signal-pin-selected', selected);
     }
+    for (const { shape, signal: labelSignal } of this.labels) {
+      shape.classList.toggle('signal-detail-selected', matches(labelSignal.bits, labelSignal));
+    }
+    for (const { shape, part } of this.groups) {
+      shape.classList.toggle('signal-terminal-selected', !!part.signal && part.pins.some(pin => matches(pin.bits)));
+    }
+    this.drawing?.classList.toggle('signal-focus', visible);
   }
 
   setCriticalPath(path?: CriticalPath) {
