@@ -80,7 +80,7 @@ main { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8
 @container diagram (max-width: 420px) {
   .diagram-panel > .panel-header { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heading" "path" "actions"; }
 }
-#log { font: 11px/1.45 var(--mono); white-space: pre-wrap; margin: 4px; color: var(--muted); overflow-wrap: anywhere; }
+#log, #sta-log { font: 11px/1.45 var(--mono); white-space: pre-wrap; margin: 4px; color: var(--muted); overflow-wrap: anywhere; }
 #diagnostics button { display: block; white-space: normal; text-align: left; margin: 3px 0; width: 100%; }
 #scope-path { grid-area: path; justify-self: center; max-width: 100%; display: flex; gap: 4px; align-items: center; overflow-x: auto; white-space: nowrap; color: var(--muted); }
 #scope-path > :only-child { overflow: hidden; text-overflow: ellipsis; }
@@ -262,6 +262,7 @@ dialog p { margin: 0; }
 #sta-inputs { color: var(--muted); }
 .jtag-actions { display: flex; gap: 8px; margin-bottom: 8px; }
 #jtag-report { padding: 8px; border: 1px solid var(--line); }
+#sta-show-log { margin: 0 0 12px; }
 #sta-report, #fpga-report, #jtag-report { margin: 0; font: 12px/1.45 var(--mono); }
 .vscode-workbench :is(.transport, .watch-list, .watch-heading) { background: var(--panel); }
 .vscode-workbench :is(.watch-heading, .watch-row, .signal-row, .part-row, .signal-menu, dialog) { border-color: var(--line); }

@@ -64,7 +64,14 @@ export interface Diagnostic {
 }
 export type FpgaClockTiming = Record<string, { achieved: number; constraint: number }>;
 
+export interface FpgaCriticalPath {
+  from: string;
+  to: string;
+  path: { delay: number; type: string; to: { cell: string; port: string }; net?: string }[];
+}
+
 export interface BuildResult {
+  fpgaCriticalPaths?: FpgaCriticalPath[];
   fpgaTiming?: FpgaClockTiming;
   timingReport?: string;
   bitstream?: Uint8Array;

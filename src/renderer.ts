@@ -367,6 +367,20 @@ async function synthesize() {
   }
 }
 
+function showStaLog(log: string) {
+  el('sta-log').textContent = log;
+  el('sta-log-details').hidden = false;
+  el('sta-show-log').hidden = false;
+}
+
+function setStaMetric(id: string, slack: number | undefined, unit: string) {
+  const field = el(id);
+  const violated = slack !== undefined && (slack < 0 || Object.is(slack, -0));
+  field.textContent = slack === undefined ? '无可报告路径'
+    : `${violated && Object.is(slack, -0) ? '-0.000' : slack.toFixed(3)} ${unit} · ${violated ? 'VIOLATED' : 'MET'}`;
+  field.classList.toggle('error', violated);
+}
+
 async function runSta() {
   if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   staBusy = true;
@@ -377,6 +391,8 @@ async function runSta() {
   el('sta-summary').hidden = true;
   el('fpga-timing-clocks').hidden = true;
   el('sta-inputs').textContent = '';
+  el('sta-show-log').hidden = true;
+  el('sta-log-details').hidden = true;
   el('sta-report').textContent = '正在准备 STA…';
   selectWorkbenchTab(button('view-sta'));
   status('正在运行 STA…');
@@ -390,14 +406,33 @@ async function runSta() {
         el('sta-report').textContent = label;
       });
       el('sta-inputs').textContent = [result.top, result.part, result.xdc, 'nextpnr · 布局布线后时序'].filter(Boolean).join(' · ');
-      el('sta-report').textContent = result.log;
-      if (!result.ok) { status('FPGA 时序分析失败，请查看报告。', true); return; }
-      const clocks = Object.entries(result.clocks ?? {});
+      showStaLog(result.log);
+      if (!result.ok) {
+        el('sta-report').textContent = 'FPGA 时序分析失败。请查看完整 STA 日志。';
+        status('FPGA 时序分析失败。', true);
+        return;
+      }
+      const clocks = Object.entries(result.clocks ?? {}).filter(([, { achieved, constraint }]) =>
+        Number.isFinite(achieved) && achieved > 0 && Number.isFinite(constraint) && constraint > 0);
+      const slack = (achieved: number, constraint: number) => 1000 / constraint - 1000 / achieved;
+      const worstSlack = clocks.length ? Math.min(...clocks.map(([, c]) => slack(c.achieved, c.constraint))) : undefined;
+      el('sta-setup-label').textContent = 'Setup · WNS（同一时钟域）';
+      setStaMetric('sta-setup', worstSlack, 'ns');
+      el('sta-hold').textContent = '此 nextpnr 流程未报告';
+      el('sta-hold').classList.remove('error');
+      el('sta-summary').hidden = false;
+      const paths = (result.paths ?? []).map(({ from, to, path }) => {
+        const delay = path.reduce((total, step) => total + step.delay, 0);
+        return [`关键路径 · ${from} → ${to} · ${delay.toFixed(3)} ns`,
+          ...path.map(step => `${step.delay.toFixed(3).padStart(8)} ns  ${step.type.padEnd(9)} ${step.to.cell}/${step.to.port}${step.net ? '  ' + step.net : ''}`),
+        ].join('\n');
+      });
+      el('sta-report').textContent = paths.join('\n\n') || '无可报告的关键路径。';
       const list = el('fpga-timing-clocks');
       list.replaceChildren(...clocks.map(([name, { achieved, constraint }]) => {
         const item = document.createElement('li');
         const met = achieved >= constraint;
-        item.textContent = `${name} · Fmax ${achieved.toFixed(2)} MHz / 目标 ${constraint.toFixed(2)} MHz · ${met ? 'MET' : 'VIOLATED'}`;
+        item.textContent = `${name} · Fmax ${achieved.toFixed(2)} MHz / 目标 ${constraint.toFixed(2)} MHz · Setup slack ${slack(achieved, constraint).toFixed(3)} ns · ${met ? 'MET' : 'VIOLATED'}`;
         item.classList.toggle('error', !met);
         return item;
       }));
@@ -420,22 +455,33 @@ async function runSta() {
     }
     el('sta-inputs').textContent = [result.top, result.liberty, result.sdc,
       result.demo ? 'FIFO 示例模型 · ns · 布局布线前' : 'Liberty 时间单位 · 布局布线前'].filter(Boolean).join(' · ');
-    el('sta-report').textContent = result.log;
-    if (!result.ok) { status('STA 运行失败，请查看报告。', true); return; }
-    const [, setup = '', hold = ''] = result.log.split(/^=== (?:Setup|Hold) .* ===$/m);
-    const slack = (section: string) => section.match(/^\s*([-+]?\d+(?:\.\d+)?)\s+slack \((MET|VIOLATED)\)/m);
-    const setupSlack = slack(setup);
-    const holdSlack = slack(hold);
-    for (const [id, entry] of [['sta-setup', setupSlack], ['sta-hold', holdSlack]] as const) {
-      const field = el(id);
-      field.textContent = entry ? `${entry[1]}${result.demo ? ' ns' : ''} · ${entry[2]}` : '无可报告路径';
-      field.classList.toggle('error', entry?.[2] === 'VIOLATED');
+    showStaLog(result.log);
+    if (!result.ok) {
+      el('sta-report').textContent = 'OpenSTA 运行失败。请查看完整 STA 日志。';
+      status('STA 运行失败。', true);
+      return;
     }
+    const [, coverage = '', setup = '', hold = ''] = (result.report ?? '').split(/^=== (?:Constraint coverage|Setup .*|Hold .*) ===$/m);
+    const unit = coverage.match(/^\s*time\s+1([a-z]+)\s*$/mi)?.[1] ?? (result.demo ? 'ns' : 'Liberty 时间单位');
+    const worstSlack = (section: string) => {
+      const values = [...section.matchAll(/^\s*([-+]?\d+(?:\.\d+)?)\s+slack \((MET|VIOLATED)\)/gm)]
+        .map(match => match[2] === 'VIOLATED' ? -Math.abs(Number(match[1])) : Number(match[1]));
+      return values.length ? Math.min(...values) : undefined;
+    };
+    const setupSlack = worstSlack(setup);
+    const holdSlack = worstSlack(hold);
+    el('sta-setup-label').textContent = 'Setup · WNS';
+    setStaMetric('sta-setup', setupSlack, unit);
+    setStaMetric('sta-hold', holdSlack, unit);
     el('sta-summary').hidden = false;
-    status(started === revision ? 'STA 报告已生成。' : 'STA 报告基于运行前的源码和设置，请重新运行。');
+    el('sta-report').textContent = 'Setup 最差路径\n' + setup.trim() + '\n\nHold 最差路径\n' + hold.trim();
+    const violated = [setupSlack, holdSlack].some(slack => slack !== undefined && (slack < 0 || Object.is(slack, -0)));
+    status(started !== revision ? 'STA 报告基于运行前的源码和设置，请重新运行。'
+      : violated ? 'STA 报告已生成，存在时序违例。' : 'STA 报告已生成。', violated);
   } catch (error) {
-    el('sta-report').textContent = String(error);
-    status('STA 运行失败，请查看报告。', true);
+    showStaLog(String(error));
+    el('sta-report').textContent = '时序分析未完成。请查看完整 STA 日志。';
+    status('STA 运行失败，请查看日志。', true);
   } finally {
     progress.finish();
     staBusy = false;
@@ -519,6 +565,7 @@ function showTargetPlatform(platform: TargetPlatform) {
     el('sta-summary').hidden = true;
     el('fpga-timing-clocks').hidden = true;
     el('sta-inputs').textContent = '';
+    el('sta-show-log').hidden = true;
     el('sta-report').textContent = '点击 Run STA 执行当前目标的时序分析。';
     delete el('sta-pane').dataset.platform;
   }
@@ -1071,6 +1118,12 @@ on('target-platform', 'change', () => {
 });
 on('synthesize', 'click', () => { void synthesize(); });
 on('run-sta', 'click', () => { void runSta(); });
+on('sta-show-log', 'click', () => {
+  selectWorkbenchTab(button('view-log'));
+  const details = el<HTMLDetailsElement>('sta-log-details');
+  details.open = true;
+  details.scrollIntoView({ block: 'start' });
+});
 on('build-bitstream', 'click', () => { void buildBitstream(); });
 on('detect-jlink', 'click', () => { void runJtag(false); });
 on('program-jlink', 'click', () => { void runJtag(true); });

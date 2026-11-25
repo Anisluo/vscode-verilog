@@ -93,11 +93,12 @@
     </section>
     <section id="sta-pane" role="tabpanel" aria-labelledby="view-sta" tabindex="0" hidden>
       <dl id="sta-summary" hidden>
-        <div><dt>Setup · Worst slack</dt><dd id="sta-setup"></dd></div>
-        <div><dt>Hold · Worst slack</dt><dd id="sta-hold"></dd></div>
+        <div><dt id="sta-setup-label">Setup · WNS</dt><dd id="sta-setup"></dd></div>
+        <div><dt>Hold · Worst slack (WHS)</dt><dd id="sta-hold"></dd></div>
       </dl>
       <p id="sta-inputs"></p>
       <ul id="fpga-timing-clocks" hidden></ul>
+      <button id="sta-show-log" hidden>查看完整 STA 日志</button>
       <pre id="sta-report">点击 Run STA 执行映射和静态时序分析。</pre>
     </section>
     <section id="fpga-pane" role="tabpanel" aria-labelledby="view-fpga" tabindex="0" hidden>
@@ -110,7 +111,9 @@
       <pre id="fpga-report">点击 Build Bitstream 生成 FPGA .bit 文件。</pre>
     </section>
     <section id="log-pane" role="tabpanel" aria-labelledby="view-log" tabindex="0" hidden>
-      <div id="diagnostics"></div><pre id="log"></pre>
+      <div id="diagnostics"></div>
+      <details id="sta-log-details" hidden><summary>STA 日志</summary><pre id="sta-log"></pre></details>
+      <pre id="log"></pre>
     </section>
     </div>
   </main>

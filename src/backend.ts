@@ -171,6 +171,7 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
           log => { result.log += log; }, progress);
         result.bitstream = implementation.bitstream;
         result.fpgaTiming = implementation.clocks;
+        result.fpgaCriticalPaths = implementation.paths;
       } catch (error) {
         result.ok = false;
         result.log += '\n' + String(error);

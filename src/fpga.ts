@@ -1,7 +1,7 @@
 import { access, readFile, readdir } from 'node:fs/promises';
 import { basename, delimiter, dirname, extname, join, resolve } from 'node:path';
 import { run } from './tool-process';
-import type { FpgaClockTiming, SynthesisStage } from './protocol';
+import type { FpgaClockTiming, FpgaCriticalPath, SynthesisStage } from './protocol';
 
 export interface FpgaOptions {
   part: string;
@@ -76,8 +76,10 @@ export async function implementFpga(
     '--json', 'design.json', '--report', 'nextpnr.json',
     ...(fpga.timingOnly ? ['--timing-allow-fail'] : ['-o', 'fasm=design.fasm']),
   ]);
-  const { fmax: clocks } = JSON.parse(await readFile(join(workspace, 'nextpnr.json'), 'utf8')) as { fmax?: FpgaClockTiming };
-  if (fpga.timingOnly) return { clocks };
+  const { fmax: clocks, critical_paths: paths } = JSON.parse(await readFile(join(workspace, 'nextpnr.json'), 'utf8')) as {
+    fmax?: FpgaClockTiming; critical_paths?: FpgaCriticalPath[];
+  };
+  if (fpga.timingOnly) return { clocks, paths };
   progress?.('bitstream');
   await execute('FASM → Frames', windows ? join(yosysRoot, 'lib', 'python3.exe') : bin('fasm2frames'), [
     ...(windows ? [join(openXc7Root, 'libexec', 'fasm2frames')] : []),

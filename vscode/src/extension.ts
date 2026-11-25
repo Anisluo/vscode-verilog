@@ -336,12 +336,12 @@ export function activate(context: vscode.ExtensionContext) {
           }, timing, fpga);
           if (target === panel && version === diagnosticVersion) publish(result.diagnostics, snapshot);
           if (timing) await reply({
-            ok: result.ok, log: result.timingReport ?? result.log, top: result.top,
+            ok: result.ok, report: result.timingReport, log: result.timingReport ? result.log + '\n[OpenSTA]\n' + result.timingReport : result.log, top: result.top,
             liberty: basename(timing.liberty), sdc: basename(timing.sdc),
             demo: timingDemo,
           });
           else if (fpga?.timingOnly) {
-            await reply({ ok: result.ok, part: fpga.part, top: result.top, xdc: basename(fpga.constraints), log: result.log, clocks: result.fpgaTiming });
+            await reply({ ok: result.ok, part: fpga.part, top: result.top, xdc: basename(fpga.constraints), log: result.log, clocks: result.fpgaTiming, paths: result.fpgaCriticalPaths });
           } else if (fpga && bitstreamDirectory) {
             let output: string | undefined;
             if (result.ok && result.bitstream && result.top && /^[\w$]+$/.test(result.top)) {
