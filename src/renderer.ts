@@ -447,6 +447,8 @@ async function buildBitstream() {
   if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   fpgaBusy = true;
   bitstreamRevision = undefined;
+  el('jtag-report').hidden = true;
+  el('jtag-report').textContent = '';
   const started = revision;
   disableBuildButtons(true);
   el('fpga-output').textContent = '';
