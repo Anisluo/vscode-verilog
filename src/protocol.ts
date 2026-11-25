@@ -67,7 +67,13 @@ export type FpgaClockTiming = Record<string, { achieved: number; constraint: num
 export interface FpgaCriticalPath {
   from: string;
   to: string;
-  path: { delay: number; type: string; to: { cell: string; port: string }; net?: string }[];
+  path: {
+    delay: number;
+    type: string;
+    from: { cell: string; port: string };
+    to: { cell: string; port: string };
+    net?: string;
+  }[];
 }
 
 export interface BuildResult {

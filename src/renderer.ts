@@ -5,7 +5,7 @@ import { workbench } from '../vscode/src/web-platform';
 import './style.css';
 import { compile, radixShort } from './design';
 import type { Design, Logic, Part, Radix, Scope, Signal, Vector } from './design';
-import type { BuildOptions, BuildResult, Diagnostic, Source, TargetPlatform } from './protocol';
+import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, TargetPlatform } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
 import type { Palette } from './schematic';
 import type { Frame, Request } from './sim-worker';
@@ -381,6 +381,51 @@ function setStaMetric(id: string, slack: number | undefined, unit: string) {
   field.classList.toggle('error', violated);
 }
 
+function formatFpgaPaths(paths: FpgaCriticalPath[], clocks: FpgaClockTiming) {
+  const separator = '-----------------------------------------------------------';
+  const row = (delay: number | undefined, time: number, description: string) =>
+    (delay === undefined ? '        ' : delay.toFixed(3).padStart(8)) + time.toFixed(3).padStart(9) + '   ' + description;
+  const sections = paths.filter(({ path }) => path.length).map(({ from, to, path }) => {
+    const first = path[0].from;
+    const last = path.at(-1)!.to;
+    const clock = from === to ? /^(?:posedge|negedge) (.+)$/.exec(from)?.[1] : undefined;
+    const frequency = clock ? clocks[clock]?.constraint : undefined;
+    const period = frequency !== undefined && Number.isFinite(frequency) && frequency > 0 ? 1000 / frequency : undefined;
+    let arrival = 0;
+    let setup = 0;
+    const delays: string[] = [];
+    for (const step of path) {
+      if (step.type === 'setup') {
+        setup += step.delay;
+      } else {
+        arrival += step.delay;
+        delays.push(row(step.delay, arrival, `${step.type} ${step.to.cell}/${step.to.port}${step.net ? ' · ' + step.net : ''}`));
+      }
+    }
+    const required = period === undefined ? undefined : period - setup;
+    const slack = required === undefined ? undefined : required - arrival;
+    const report = [
+      `Startpoint: ${first.cell}/${first.port} (${from})`,
+      `Endpoint: ${last.cell}/${last.port} (${to})`,
+      `Path Group: ${clock ?? from + ' → ' + to}`,
+      'Path Type: max', '', '   Delay     Time   Description (ns)', separator, ...delays,
+      row(undefined, arrival, 'data arrival time'),
+    ];
+    if (period !== undefined && required !== undefined && slack !== undefined) {
+      report.push('', row(period, period, 'clock period'), row(-setup, required, 'FPGA setup time'),
+        row(undefined, required, 'data required time'), separator,
+        row(undefined, slack, `slack (${slack >= 0 ? 'MET' : 'VIOLATED'})`));
+    } else {
+      if (setup) report.push(row(setup, arrival + setup, 'path delay including FPGA setup time'));
+      report.push('', '此路径未提供可用于计算 slack 的同沿时钟周期。');
+    }
+    return { report: report.join('\n'), slack };
+  });
+  sections.sort((a, b) => (a.slack ?? Infinity) - (b.slack ?? Infinity));
+  return 'Setup 最差路径\n' + (sections.map(section => section.report).join('\n\n') || '无可报告的关键路径。') +
+    '\n\nHold 最差路径\n此 nextpnr 流程未报告 Hold 路径。';
+}
+
 async function runSta() {
   if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   staBusy = true;
@@ -421,13 +466,7 @@ async function runSta() {
       el('sta-hold').textContent = '此 nextpnr 流程未报告';
       el('sta-hold').classList.remove('error');
       el('sta-summary').hidden = false;
-      const paths = (result.paths ?? []).map(({ from, to, path }) => {
-        const delay = path.reduce((total, step) => total + step.delay, 0);
-        return [`关键路径 · ${from} → ${to} · ${delay.toFixed(3)} ns`,
-          ...path.map(step => `${step.delay.toFixed(3).padStart(8)} ns  ${step.type.padEnd(9)} ${step.to.cell}/${step.to.port}${step.net ? '  ' + step.net : ''}`),
-        ].join('\n');
-      });
-      el('sta-report').textContent = paths.join('\n\n') || '无可报告的关键路径。';
+      el('sta-report').textContent = formatFpgaPaths(result.paths ?? [], result.clocks ?? {});
       const list = el('fpga-timing-clocks');
       list.replaceChildren(...clocks.map(([name, { achieved, constraint }]) => {
         const item = document.createElement('li');
