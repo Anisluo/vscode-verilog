@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -132,6 +132,16 @@
           "default": "",
           "scope": "resource",
           "description": "openXC7 兼容的板卡 XDC 文件。相对路径以工作区或源码目录为准。"
+        },
+        "verilogWorkbench.fpgaJtagCable": {
+          "type": "string",
+          "enum": [
+            "jlink",
+            "jlink_base"
+          ],
+          "default": "jlink",
+          "scope": "machine",
+          "description": "openFPGALoader 的 JTAG 探针类型。按 J-Link 的 USB 型号选择 jlink 或 jlink_base。"
         }
       }
     }

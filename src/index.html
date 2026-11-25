@@ -95,6 +95,11 @@
     </section>
     <section id="fpga-pane" role="tabpanel" aria-labelledby="view-fpga" tabindex="0" hidden>
       <p id="fpga-output"></p>
+      <div class="jtag-actions">
+        <button id="detect-jlink">Detect J-Link</button>
+        <button id="program-jlink" class="primary" disabled>Program SRAM</button>
+      </div>
+      <pre id="jtag-report" aria-live="polite" hidden></pre>
       <pre id="fpga-report">点击 Build Bitstream 生成 FPGA .bit 文件。</pre>
     </section>
     <section id="log-pane" role="tabpanel" aria-labelledby="view-log" tabindex="0" hidden>

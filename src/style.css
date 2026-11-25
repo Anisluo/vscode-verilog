@@ -259,7 +259,9 @@ dialog p { margin: 0; }
 #sta-summary dd { margin: 4px 0 0; font-family: var(--mono); }
 #sta-summary .error { color: var(--vscode-errorForeground, #f66); }
 #sta-inputs { color: var(--muted); }
-#sta-report, #fpga-report { margin: 0; font: 12px/1.45 var(--mono); }
+.jtag-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+#jtag-report { padding: 8px; border: 1px solid var(--line); }
+#sta-report, #fpga-report, #jtag-report { margin: 0; font: 12px/1.45 var(--mono); }
 .vscode-workbench :is(.transport, .watch-list, .watch-heading) { background: var(--panel); }
 .vscode-workbench :is(.watch-heading, .watch-row, .signal-row, .part-row, .signal-menu, dialog) { border-color: var(--line); }
 .vscode-workbench #wave-scroll { background: var(--background); }

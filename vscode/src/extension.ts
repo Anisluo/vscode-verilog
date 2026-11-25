@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { hdlJob } from '../../src/backend';
+import { runJlink } from '../../src/jtag';
+import type { JtagBitstream } from '../../src/jtag';
 import type { FpgaOptions } from '../../src/fpga';
 import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
@@ -205,6 +207,8 @@ export function activate(context: vscode.ExtensionContext) {
       { enableScripts: true, localResourceRoots: [assets], retainContextWhenHidden: true });
     panel = target;
     ready = false;
+    let programmedSource: vscode.TextDocument | undefined;
+    let builtBitstream: JtagBitstream | undefined;
     const receiver = target.webview.onDidReceiveMessage(async message => {
       if (target !== panel) return;
       if (message.type === 'ready') {
@@ -226,6 +230,16 @@ export function activate(context: vscode.ExtensionContext) {
         if (message.type === 'directory') {
           const choice = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true });
           await reply(choice?.[0]?.fsPath);
+        }
+        if (message.type === 'jtag-detect' || message.type === 'jtag-program') {
+          if (!vscode.workspace.isTrusted) throw new Error('请在受信任的工作区运行 JTAG 工具。');
+          const config = configuration();
+          const root = config.get<string>('fpgaYosysPath', '').trim();
+          const cable = config.get<string>('fpgaJtagCable', 'jlink');
+          const program = message.type === 'jtag-program';
+          if (program && (!builtBitstream || programmedSource !== primary)) throw new Error('请先为当前设计生成 .bit 文件。');
+          const directory = primary?.uri.scheme === 'file' ? dirname(primary.fileName) : context.extensionPath;
+          await reply(await runJlink(root ? resolve(root) : undefined, cable, directory, program ? builtBitstream : undefined));
         }
         if (message.type === 'hdl' || message.type === 'sta' || message.type === 'fpga') {
           if (!vscode.workspace.isTrusted) throw new Error('请在受信任的工作区运行 HDL 工具。');
@@ -280,6 +294,7 @@ export function activate(context: vscode.ExtensionContext) {
           let fpga: FpgaOptions | undefined;
           let bitstreamDirectory: string | undefined;
           if (message.type === 'fpga') {
+            builtBitstream = undefined;
             const openXc7Root = config.get<string>('fpgaToolchainPath', '').trim();
             const yosysRoot = config.get<string>('fpgaYosysPath', '').trim();
             if (!openXc7Root || !yosysRoot) {
@@ -326,6 +341,8 @@ export function activate(context: vscode.ExtensionContext) {
               } finally {
                 await rm(temporary, { force: true }).catch(() => {});
               }
+              builtBitstream = { path: output, part: fpga.part };
+              programmedSource = document;
             }
             await reply({ output, part: fpga.part, top: result.top, log: result.log });
           } else await reply(result);

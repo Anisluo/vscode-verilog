@@ -83,4 +83,6 @@ OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debi
 - **内置 FIFO 示例**。执行 **Verilog: 打开 FIFO 示例**，保留 FPGA 器件和 XDC 两项设置为空，然后点击 **Build Bitstream**。示例目标是 **Digilent Zybo Z7-10**（`xc7z010clg400-1`），时钟为 125 MHz。上板后 LED0 表示自检通过，LED1 表示失败，BTN0 重启自检。
 - **自己的工程**。打开 FPGA 顶层源文件，设置 `verilogWorkbench.fpgaPart` 为器件、封装和速度等级的完整型号，设置 `verilogWorkbench.fpgaXdc` 为兼容的板卡 XDC。XDC 应指定板卡引脚、I/O 标准和时钟周期。可通过 `additionalSources` 添加 HDL 文件。文件生成到工作区的 `build/`，单文件工程则生成到源码旁的 `build/`。
 
-板卡约束依据 [Digilent Zybo Z7 主 XDC](https://github.com/Digilent/digilent-xdc/blob/master/Zybo-Z7-Master.xdc)。下载到板卡可使用对应的 JTAG 工具。
+板卡约束依据 [Digilent Zybo Z7 主 XDC](https://github.com/Digilent/digilent-xdc/blob/master/Zybo-Z7-Master.xdc)。通过 J-Link 下载时，在 **Bitstream** 页点 **Detect J-Link** 扫描 JTAG 链。编译成功后点 **Program SRAM**，扩展会确认链上恰有一个与比特流目标匹配的 FPGA，并加载到 FPGA 的易失配置存储。
+
+JTAG 功能使用 OSS CAD Suite 中启用了 J-Link 支持的 `openFPGALoader`。探针类型默认是 `jlink`（USB ID 1366:0105），也可以在 `verilogWorkbench.fpgaJtagCable` 选 `jlink_base`（1366:0101）。Windows 上探针的 JTAG USB 接口须可由 libusb 访问。

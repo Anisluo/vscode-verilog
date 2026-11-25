@@ -41,9 +41,12 @@ let lintQueued = false;
 let synthesisBusy = false;
 let staBusy = false;
 let fpgaBusy = false;
+let jtagBusy = false;
+let bitstreamRevision: number | undefined;
 
 function disableBuildButtons(disabled: boolean) {
-  for (const id of ['synthesize', 'run-sta', 'build-bitstream']) button(id).disabled = disabled;
+  for (const id of ['synthesize', 'run-sta', 'build-bitstream', 'detect-jlink']) button(id).disabled = disabled;
+  button('program-jlink').disabled = disabled || bitstreamRevision !== revision;
 }
 let synthesisQueued = false;
 let logMode: 'lint' | 'synth' = 'lint';
@@ -219,6 +222,7 @@ function status(message: string, error = false) {
 let hostSources: Pick<Source, 'id' | 'name'>[] = [];
 function inputsChanged() {
   revision++;
+  button('program-jlink').disabled = true;
   if (design && buildRevision !== revision) el('net-status').textContent = '源码或综合设置已变更';
   queueLint();
 }
@@ -288,7 +292,7 @@ function beginSynthesisProgress() {
 }
 
 async function synthesize() {
-  if (!hostSources.length || staBusy || fpgaBusy) return;
+  if (!hostSources.length || staBusy || fpgaBusy || jtagBusy) return;
   if (synthesisBusy) { synthesisQueued = true; return; }
   const currentOptions = options();
   const started = revision;
@@ -363,7 +367,7 @@ async function synthesize() {
 }
 
 async function runSta() {
-  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy) return;
+  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   staBusy = true;
   const started = revision;
   disableBuildButtons(true);
@@ -411,8 +415,9 @@ async function runSta() {
 }
 
 async function buildBitstream() {
-  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy) return;
+  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   fpgaBusy = true;
+  bitstreamRevision = undefined;
   const started = revision;
   disableBuildButtons(true);
   el('fpga-output').textContent = '';
@@ -432,6 +437,7 @@ async function buildBitstream() {
     el('fpga-output').textContent = [result.part, result.top, result.output].filter(Boolean).join(' · ');
     el('fpga-report').textContent = result.log;
     if (!result.output) { status('FPGA 编译失败，请查看报告。', true); return; }
+    bitstreamRevision = started;
     status(started === revision ? 'FPGA 比特流已生成。' : '比特流基于运行前的源码和设置，请重新编译。');
   } catch (error) {
     el('fpga-report').textContent = String(error);
@@ -439,6 +445,27 @@ async function buildBitstream() {
   } finally {
     progress.finish();
     fpgaBusy = false;
+    disableBuildButtons(false);
+  }
+}
+
+async function runJtag(program: boolean) {
+  if (synthesisBusy || staBusy || fpgaBusy || jtagBusy || (program && bitstreamRevision !== revision)) return;
+  jtagBusy = true;
+  disableBuildButtons(true);
+  const report = el('jtag-report');
+  report.hidden = false;
+  report.textContent = program ? '正在识别目标并下载到 SRAM…' : '正在扫描 JTAG 链…';
+  status(report.textContent);
+  try {
+    const result = await workbench.jtag(program);
+    report.textContent = result.log;
+    status(result.ok ? (program ? 'FPGA SRAM 下载完成。' : 'JTAG 链扫描完成。') : 'JTAG 操作失败，请查看日志。', !result.ok);
+  } catch (error) {
+    report.textContent = String(error);
+    status('JTAG 操作失败，请查看日志。', true);
+  } finally {
+    jtagBusy = false;
     disableBuildButtons(false);
   }
 }
@@ -991,6 +1018,8 @@ for (const mode of modes) {
 on('synthesize', 'click', () => { void synthesize(); });
 on('run-sta', 'click', () => { void runSta(); });
 on('build-bitstream', 'click', () => { void buildBitstream(); });
+on('detect-jlink', 'click', () => { void runJtag(false); });
+on('program-jlink', 'click', () => { void runJtag(true); });
 on('show-signals', 'click', () => { inspector = 'signals'; renderInspector(); });
 on('show-parts', 'click', () => { inspector = 'parts'; renderInspector(); });
 on('signal-filter', 'input', renderInspector);
