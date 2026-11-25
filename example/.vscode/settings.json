@@ -1,0 +1,9 @@
+{
+  "verilogWorkbench.targetPlatform": "fpga",
+  "verilogWorkbench.fpgaPart": "xc7z010clg400-1",
+  "verilogWorkbench.additionalSources": [
+    "rtl/button_sync.v",
+    "rtl/tick_gen.v",
+    "rtl/led_pattern.v"
+  ]
+}

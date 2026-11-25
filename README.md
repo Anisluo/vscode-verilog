@@ -85,8 +85,10 @@ OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debi
 先解压 [openXC7 发布包](https://github.com/cavearr/toolchain-openxc7-releases/releases) 与该版本指定的 OSS CAD Suite。在 VS Code 设置中，将 `verilogWorkbench.fpgaToolchainPath` 和 `verilogWorkbench.fpgaYosysPath` 分别指向两个解压目录的根目录。Windows 使用 OSS CAD Suite 内的 Python。此流程使用工具包内已生成的器件数据库。
 
 - **内置 FIFO 示例**。执行 **Verilog: 打开 FIFO 示例**，保留 FPGA 器件和 XDC 两项设置为空，然后点击 **Build Bitstream**。示例目标是 **Digilent Zybo Z7-10**（`xc7z010clg400-1`），时钟为 125 MHz。上板后 LED0 表示自检通过，LED1 表示失败，BTN0 重启自检。
-- **自己的工程**。打开 FPGA 顶层源文件，设置 `verilogWorkbench.fpgaPart` 为器件、封装和速度等级的完整型号，设置 `verilogWorkbench.fpgaXdc` 为兼容的板卡 XDC。XDC 应指定板卡引脚、I/O 标准和时钟周期。可通过 `additionalSources` 添加 HDL 文件。文件生成到工作区的 `build/`，单文件工程则生成到源码旁的 `build/`。
+- **自己的工程**。打开 FPGA 顶层源文件，设置 `verilogWorkbench.fpgaPart` 为器件、封装和速度等级的完整型号，把 XDC 放在顶层源码目录、工作区根目录或其中的 `constraints/`。存在多个候选时优先匹配顶层模块名或源码文件名。若无法唯一匹配，设置 `verilogWorkbench.fpgaXdc` 指定文件。XDC 应指定板卡引脚、I/O 标准和时钟周期。可通过 `additionalSources` 添加 HDL 文件。文件生成到工作区的 `build/`，单文件工程则生成到源码旁的 `build/`。
 
 板卡约束依据 [Digilent Zybo Z7 主 XDC](https://github.com/Digilent/digilent-xdc/blob/master/Zybo-Z7-Master.xdc)。通过 J-Link 下载时，在 **Bitstream** 页点 **Detect J-Link** 扫描 JTAG 链。编译成功后点 **Program SRAM**，扩展会确认链上恰有一个与比特流目标匹配的 FPGA，并加载到 FPGA 的易失配置存储。
 
 JTAG 功能使用 OSS CAD Suite 中启用了 J-Link 支持的 `openFPGALoader`。探针类型默认是 `jlink`（USB ID 1366:0105），也可以在 `verilogWorkbench.fpgaJtagCable` 选 `jlink_base`（1366:0101）。Windows 上探针的 JTAG USB 接口须可由 libusb 访问。
+
+仓库中的 [三模块 Verilog 示例](example/README.md) 包含顶层、Testbench 和可自动识别的 Zybo Z7-10 XDC。

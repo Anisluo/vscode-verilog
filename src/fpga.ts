@@ -1,5 +1,5 @@
-import { access, readFile } from 'node:fs/promises';
-import { delimiter, join } from 'node:path';
+import { access, readFile, readdir } from 'node:fs/promises';
+import { basename, delimiter, dirname, extname, join, resolve } from 'node:path';
 import { run } from './tool-process';
 import type { FpgaClockTiming, SynthesisStage } from './protocol';
 
@@ -9,6 +9,28 @@ export interface FpgaOptions {
   openXc7Root: string;
   yosysRoot: string;
   timingOnly?: boolean;
+}
+
+export async function discoverFpgaConstraints(source: string, workspace: string, top: string) {
+  const sourceDir = dirname(source);
+  const directories = [...new Set([sourceDir, workspace, join(sourceDir, 'constraints'), join(workspace, 'constraints')])];
+  const paths = (await Promise.all(directories.map(async directory => {
+    try {
+      const entries = await readdir(directory, { withFileTypes: true });
+      return entries.filter(entry => entry.isFile() && /\.xdc$/i.test(entry.name)).map(entry => resolve(directory, entry.name));
+    } catch (error) {
+      if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return [];
+      throw error;
+    }
+  }))).flat();
+  if (paths.length === 1) return paths[0];
+  if (!paths.length) throw new Error('未找到 XDC。请放到顶层源码目录、工作区根目录或 constraints/ 子目录，也可以设置 verilogWorkbench.fpgaXdc。');
+  for (const stem of [top, basename(source, extname(source))].filter(Boolean)) {
+    const matching = paths.filter(path => basename(path).toLowerCase() === stem.toLowerCase() + '.xdc');
+    if (matching.length === 1) return matching[0];
+    if (matching.length > 1) break;
+  }
+  throw new Error('找到多个 XDC，请设置 verilogWorkbench.fpgaXdc：\n' + paths.join('\n'));
 }
 
 const windows = process.platform === 'win32';

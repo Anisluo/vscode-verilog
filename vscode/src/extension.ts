@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { hdlJob } from '../../src/backend';
 import { runJlink } from '../../src/jtag';
 import type { JtagBitstream } from '../../src/jtag';
+import { discoverFpgaConstraints } from '../../src/fpga';
 import type { FpgaOptions } from '../../src/fpga';
 import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
@@ -311,7 +312,7 @@ export function activate(context: vscode.ExtensionContext) {
             const part = config.get<string>('fpgaPart', '').trim().toLowerCase();
             const xdc = config.get<string>('fpgaXdc', '').trim();
             const demo = document?.uri.toString() === example.toString() && !part && !xdc;
-            if (!demo && (!part || !xdc)) throw new Error('请同时配置 verilogWorkbench.fpgaPart 和 verilogWorkbench.fpgaXdc。');
+            if (!demo && !part) throw new Error('请配置 verilogWorkbench.fpgaPart，填写器件、封装和速度等级。');
             if (!demo && document?.uri.scheme !== 'file') throw new Error('请先将 FPGA 顶层源码保存到磁盘。');
             const demoRoot = join(context.extensionPath, 'examples', 'fpga');
             if (demo) {
@@ -322,7 +323,8 @@ export function activate(context: vscode.ExtensionContext) {
             }
             fpga = {
               part: demo ? 'xc7z010clg400-1' : part,
-              constraints: demo ? join(demoRoot, 'fifo_zybo_z7_10.xdc') : resolve(folder ?? '', xdc),
+              constraints: demo ? join(demoRoot, 'fifo_zybo_z7_10.xdc') : xdc ? resolve(folder!, xdc)
+                : await discoverFpgaConstraints(document!.fileName, folder!, options.top),
               openXc7Root: resolve(openXc7Root),
               yosysRoot: resolve(yosysRoot),
               timingOnly: message.type === 'fpga-timing',
@@ -339,7 +341,7 @@ export function activate(context: vscode.ExtensionContext) {
             demo: timingDemo,
           });
           else if (fpga?.timingOnly) {
-            await reply({ ok: result.ok, part: fpga.part, top: result.top, log: result.log, clocks: result.fpgaTiming });
+            await reply({ ok: result.ok, part: fpga.part, top: result.top, xdc: basename(fpga.constraints), log: result.log, clocks: result.fpgaTiming });
           } else if (fpga && bitstreamDirectory) {
             let output: string | undefined;
             if (result.ok && result.bitstream && result.top && /^[\w$]+$/.test(result.top)) {
@@ -355,7 +357,7 @@ export function activate(context: vscode.ExtensionContext) {
               builtBitstream = { path: output, part: fpga.part };
               programmedSource = document;
             }
-            await reply({ output, part: fpga.part, top: result.top, log: result.log });
+            await reply({ output, part: fpga.part, top: result.top, xdc: basename(fpga.constraints), log: result.log });
           } else await reply(result);
         }
       } catch (error) {

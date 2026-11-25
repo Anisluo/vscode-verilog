@@ -1,0 +1,10 @@
+# Digilent Zybo Z7-10, 125 MHz oscillator and LVCMOS33 I/O.
+set_property PACKAGE_PIN K17 [get_ports clk]
+set_property PACKAGE_PIN K18 [get_ports reset_button]
+set_property PACKAGE_PIN M14 [get_ports {led[0]}]
+set_property PACKAGE_PIN M15 [get_ports {led[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports clk]
+set_property IOSTANDARD LVCMOS33 [get_ports reset_button]
+set_property IOSTANDARD LVCMOS33 [get_ports {led[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {led[1]}]
+create_clock -period 8.000 [get_ports clk]

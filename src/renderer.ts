@@ -389,7 +389,7 @@ async function runSta() {
         progress.update(label);
         el('sta-report').textContent = label;
       });
-      el('sta-inputs').textContent = [result.top, result.part, 'nextpnr · 布局布线后时序'].filter(Boolean).join(' · ');
+      el('sta-inputs').textContent = [result.top, result.part, result.xdc, 'nextpnr · 布局布线后时序'].filter(Boolean).join(' · ');
       el('sta-report').textContent = result.log;
       if (!result.ok) { status('FPGA 时序分析失败，请查看报告。', true); return; }
       const clocks = Object.entries(result.clocks ?? {});
@@ -465,7 +465,7 @@ async function buildBitstream() {
       progress.update(label);
       el('fpga-report').textContent = label;
     });
-    el('fpga-output').textContent = [result.part, result.top, result.output].filter(Boolean).join(' · ');
+    el('fpga-output').textContent = [result.part, result.top, result.xdc, result.output].filter(Boolean).join(' · ');
     el('fpga-report').textContent = result.log;
     if (!result.output) { status('FPGA 编译失败，请查看报告。', true); return; }
     bitstreamRevision = started;

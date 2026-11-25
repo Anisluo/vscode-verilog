@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -131,7 +131,7 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "openXC7 兼容的板卡 XDC 文件。相对路径以工作区或源码目录为准。"
+          "description": "openXC7 兼容的板卡 XDC 文件。留空时自动搜索源码与工作区目录及其 constraints 子目录。"
         },
         "verilogWorkbench.fpgaJtagCable": {
           "type": "string",
