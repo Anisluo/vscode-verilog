@@ -40,6 +40,11 @@ let lintBusy = false;
 let lintQueued = false;
 let synthesisBusy = false;
 let staBusy = false;
+let fpgaBusy = false;
+
+function disableBuildButtons(disabled: boolean) {
+  for (const id of ['synthesize', 'run-sta', 'build-bitstream']) button(id).disabled = disabled;
+}
 let synthesisQueued = false;
 let logMode: 'lint' | 'synth' = 'lint';
 let design: Design | undefined;
@@ -283,13 +288,12 @@ function beginSynthesisProgress() {
 }
 
 async function synthesize() {
-  if (!hostSources.length || staBusy) return;
+  if (!hostSources.length || staBusy || fpgaBusy) return;
   if (synthesisBusy) { synthesisQueued = true; return; }
   const currentOptions = options();
   const started = revision;
   synthesisBusy = true;
-  button('synthesize').disabled = true;
-  button('run-sta').disabled = true;
+  disableBuildButtons(true);
   el('schematic').setAttribute('aria-busy', 'true');
   ++jobSequence;
   logMode = 'synth';
@@ -352,18 +356,17 @@ async function synthesize() {
       void synthesize();
     } else {
       if (builtMode && selectedMode !== builtMode) setModeTab(builtMode);
-      button('synthesize').disabled = false;
-      button('run-sta').disabled = false;
+      disableBuildButtons(false);
       el('schematic').setAttribute('aria-busy', 'false');
     }
   }
 }
 
 async function runSta() {
-  if (!hostSources.length || synthesisBusy || staBusy) return;
+  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy) return;
   staBusy = true;
   const started = revision;
-  button('run-sta').disabled = button('synthesize').disabled = true;
+  disableBuildButtons(true);
   el('sta-summary').hidden = true;
   el('sta-inputs').textContent = '';
   el('sta-report').textContent = '正在准备 STA…';
@@ -398,11 +401,44 @@ async function runSta() {
   } finally {
     progress.finish();
     staBusy = false;
-    button('run-sta').disabled = button('synthesize').disabled = false;
+    disableBuildButtons(false);
   }
 }
 
-const workbenchTabs = ['view-diagram', 'view-wave', 'view-sta', 'view-log'].map(button);
+async function buildBitstream() {
+  if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy) return;
+  fpgaBusy = true;
+  const started = revision;
+  disableBuildButtons(true);
+  el('fpga-output').textContent = '';
+  el('fpga-report').textContent = '正在准备 FPGA 编译…';
+  selectWorkbenchTab(button('view-fpga'));
+  status('正在生成 FPGA 比特流…');
+  const progress = beginSynthesisProgress();
+  progress.update('正在准备 FPGA 编译…');
+  try {
+    const result = await workbench.fpga(options(), stage => {
+      const label = stage === 'place-route' ? 'nextpnr 正在布局布线…'
+        : stage === 'bitstream' ? 'openXC7 正在生成比特流…'
+          : stage === 'netlist' ? '正在检查 FPGA 网表…' : 'Yosys 正在综合 FPGA 网表…';
+      progress.update(label);
+      el('fpga-report').textContent = label;
+    });
+    el('fpga-output').textContent = [result.part, result.top, result.output].filter(Boolean).join(' · ');
+    el('fpga-report').textContent = result.log;
+    if (!result.output) { status('FPGA 编译失败，请查看报告。', true); return; }
+    status(started === revision ? 'FPGA 比特流已生成。' : '比特流基于运行前的源码和设置，请重新编译。');
+  } catch (error) {
+    el('fpga-report').textContent = String(error);
+    status('FPGA 编译失败，请查看报告。', true);
+  } finally {
+    progress.finish();
+    fpgaBusy = false;
+    disableBuildButtons(false);
+  }
+}
+
+const workbenchTabs = ['view-diagram', 'view-wave', 'view-sta', 'view-fpga', 'view-log'].map(button);
 function selectWorkbenchTab(selected: HTMLButtonElement) {
   for (const tab of workbenchTabs) {
     const active = tab === selected;
@@ -430,6 +466,7 @@ function bindWorkbenchTabs() {
   if (!testbenchView) button('view-wave').hidden = true;
   else {
     button('view-sta').hidden = true;
+    button('view-fpga').hidden = true;
     button('mode-gate').hidden = true;
     el('schematic').querySelector('.empty')!.textContent = '正在准备被测模块的 RTL 电路图…';
   }
@@ -948,6 +985,7 @@ for (const mode of modes) {
 }
 on('synthesize', 'click', () => { void synthesize(); });
 on('run-sta', 'click', () => { void runSta(); });
+on('build-bitstream', 'click', () => { void buildBitstream(); });
 on('show-signals', 'click', () => { inspector = 'signals'; renderInspector(); });
 on('show-parts', 'click', () => { inspector = 'parts'; renderInspector(); });
 on('signal-filter', 'input', renderInspector);

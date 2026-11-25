@@ -1,0 +1,10 @@
+# Digilent Zybo Z7-10. Pins and 125 MHz clock from Zybo-Z7-Master.xdc.
+set_property PACKAGE_PIN K17 [get_ports sysclk]
+set_property PACKAGE_PIN K18 [get_ports reset_button]
+set_property PACKAGE_PIN M14 [get_ports led_pass]
+set_property PACKAGE_PIN M15 [get_ports led_fail]
+set_property IOSTANDARD LVCMOS33 [get_ports sysclk]
+set_property IOSTANDARD LVCMOS33 [get_ports reset_button]
+set_property IOSTANDARD LVCMOS33 [get_ports led_pass]
+set_property IOSTANDARD LVCMOS33 [get_ports led_fail]
+create_clock -period 8.000 [get_ports sysclk]

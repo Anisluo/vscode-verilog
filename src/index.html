@@ -14,6 +14,7 @@
       <div class="synth-actions">
         <div class="synth-button-group"><button id="synthesize" class="primary icon-button"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3l8 5-8 5z"/></svg>Synthesis</button><button id="settings" class="primary icon-button" aria-label="综合设置" title="综合设置" aria-haspopup="dialog"><svg class="button-icon filled-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12l-6 6z"/></svg></button></div>
         <button id="run-sta" class="primary">Run STA</button>
+        <button id="build-bitstream" class="primary">Build Bitstream</button>
       </div>
     </header>
     <div id="synthesis-progress" class="synthesis-progress" hidden>
@@ -26,6 +27,7 @@
         <button id="view-diagram" role="tab" aria-controls="diagram-view" aria-selected="true">电路图</button>
         <button id="view-wave" role="tab" aria-controls="wave-view" aria-selected="false" tabindex="-1">波形</button>
         <button id="view-sta" role="tab" aria-controls="sta-pane" aria-selected="false" tabindex="-1">STA</button>
+        <button id="view-fpga" role="tab" aria-controls="fpga-pane" aria-selected="false" tabindex="-1">Bitstream</button>
         <button id="view-log" role="tab" aria-controls="log-pane" aria-selected="false" tabindex="-1">诊断与日志</button>
       </div>
       <section class="transport" aria-label="仿真控制">
@@ -90,6 +92,10 @@
       </dl>
       <p id="sta-inputs"></p>
       <pre id="sta-report">点击 Run STA 执行映射和静态时序分析。</pre>
+    </section>
+    <section id="fpga-pane" role="tabpanel" aria-labelledby="view-fpga" tabindex="0" hidden>
+      <p id="fpga-output"></p>
+      <pre id="fpga-report">点击 Build Bitstream 生成 FPGA .bit 文件。</pre>
     </section>
     <section id="log-pane" role="tabpanel" aria-labelledby="view-log" tabindex="0" hidden>
       <div id="diagnostics"></div><pre id="log"></pre>

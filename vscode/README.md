@@ -37,3 +37,14 @@ vvp -N fifo_4x8_tb.vvp
 OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debian 中执行 `sudo apt install opensta`），可用 `verilogWorkbench.staWslDistro` 指定发行版。也可用 `verilogWorkbench.staExecutable` 指定本机可执行文件的绝对路径。Linux 默认从 PATH 查找 `sta`。
 
 分析自己的模块时，设置 `verilogWorkbench.staLiberty` 和 `verilogWorkbench.staSdc`。两者可以使用绝对路径或相对于工作区的路径。SDC 应包含时钟与所需的 I/O 约束，并为自包含文件。检查报告中是否有未约束端点，再解读 slack。
+
+## 生成 Xilinx 7 系列 FPGA 比特流
+
+在综合工作台点击 **Build Bitstream**，依次运行 Yosys、nextpnr-xilinx 和 openXC7 比特流工具。**Bitstream** 标签显示编译日志和 `.bit` 文件位置。
+
+先解压 [openXC7 发布包](https://github.com/cavearr/toolchain-openxc7-releases/releases) 与该版本指定的 OSS CAD Suite。在 VS Code 设置中，将 `verilogWorkbench.fpgaToolchainPath` 和 `verilogWorkbench.fpgaYosysPath` 分别指向两个解压目录的根目录。Windows 使用 OSS CAD Suite 内的 Python。此流程使用工具包内已生成的器件数据库。
+
+- **内置 FIFO 示例**。执行 **Verilog: 打开 FIFO 示例**，保留 FPGA 器件和 XDC 两项设置为空，然后点击 **Build Bitstream**。示例目标是 **Digilent Zybo Z7-10**（`xc7z010clg400-1`），时钟为 125 MHz。上板后 LED0 表示自检通过，LED1 表示失败，BTN0 重启自检。
+- **自己的工程**。打开 FPGA 顶层源文件，设置 `verilogWorkbench.fpgaPart` 为器件、封装和速度等级的完整型号，设置 `verilogWorkbench.fpgaXdc` 为兼容的板卡 XDC。XDC 应指定板卡引脚、I/O 标准和时钟周期。可通过 `additionalSources` 添加 HDL 文件。文件生成到工作区的 `build/`，单文件工程则生成到源码旁的 `build/`。
+
+板卡约束依据 [Digilent Zybo Z7 主 XDC](https://github.com/Digilent/digilent-xdc/blob/master/Zybo-Z7-Master.xdc)。下载到板卡可使用对应的 JTAG 工具。

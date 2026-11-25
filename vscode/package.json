@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -108,6 +108,30 @@
           "default": "",
           "scope": "machine",
           "description": "Windows 上运行 OpenSTA 的 WSL 发行版名称。留空使用默认发行版。"
+        },
+        "verilogWorkbench.fpgaToolchainPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "解压后的 openXC7 发布包根目录（包含 bin、lib、share）。"
+        },
+        "verilogWorkbench.fpgaYosysPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "与 openXC7 发布包匹配的 OSS CAD Suite 根目录（包含 bin、lib）。"
+        },
+        "verilogWorkbench.fpgaPart": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "完整 Xilinx 7 系列器件型号，例如 xc7z010clg400-1。"
+        },
+        "verilogWorkbench.fpgaXdc": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "openXC7 兼容的板卡 XDC 文件。相对路径以工作区或源码目录为准。"
         }
       }
     }

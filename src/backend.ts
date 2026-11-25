@@ -1,30 +1,10 @@
-import { spawn } from 'node:child_process';
+import { run } from './tool-process';
+import { buildFpgaBitstream, fpgaDatabase } from './fpga';
+import type { FpgaOptions } from './fpga';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, delimiter, parse } from 'node:path';
 import type { BuildOptions, BuildResult, Diagnostic, Netlist, Source, SynthesisStage } from './protocol';
-
-export function run(executable: string, args: string[], cwd: string, environment: NodeJS.ProcessEnv) {
-  return new Promise<{ code: number | null; log: string }>((resolveRun, reject) => {
-    const child = spawn(executable, args, { cwd, env: environment, windowsHide: true });
-    let log = '';
-    const timeout = setTimeout(() => {
-      child.kill();
-      reject(new Error('HDL 工具超过 45 秒，已终止。'));
-    }, 45_000);
-    const receive = (data: string) => {
-      log += data;
-      if (log.length > 2_000_000) {
-        child.kill();
-        reject(new Error('HDL 工具输出超过 2 MB，已终止。'));
-      }
-    };
-    child.stdout.setEncoding('utf8').on('data', receive);
-    child.stderr.setEncoding('utf8').on('data', receive);
-    child.on('error', error => { clearTimeout(timeout); reject(error); });
-    child.on('close', code => { clearTimeout(timeout); resolveRun({ code, log }); });
-  });
-}
 
 // Slang expands a command file with its own argument parser. This keeps paths
 // containing spaces out of the Yosys command parser.
@@ -39,7 +19,7 @@ export interface TimingOptions {
   executable?: string;
   wslDistro?: string;
 }
-function buildScript(options: BuildOptions, files: string[], includes: string[], lint: boolean, timing: boolean) {
+function buildScript(options: BuildOptions, files: string[], includes: string[], lint: boolean, timing: boolean, fpga: boolean) {
   const { standard, top, mode, hierarchy, optimize, abc, observe, defines, parameters } = options;
   if (!['1364-2005', '1800-2017', '1800-2023'].includes(standard)) throw new Error('不支持的语言版本。');
   if (top && !/^[\w$]+$/.test(top)) throw new Error('顶层模块需为常规 HDL 标识符。');
@@ -54,6 +34,11 @@ function buildScript(options: BuildOptions, files: string[], includes: string[],
   const args = read.join('\n');
   const commands = ['read_slang -F inputs.f'];
   if (lint) return { args, script: commands[0] };
+  if (fpga) {
+    commands.push('hierarchy -check -auto-top', 'scratchpad -set abc.nocleanup 1',
+      'synth_xilinx -family xc7 -flatten', 'write_json design.json');
+    return { args, script: commands.join('\n') };
+  }
   commands.push('hierarchy -check -auto-top', 'proc', 'write_json source.json');
   if (timing) {
     commands.push('synth -flatten -noabc', 'dfflibmap -liberty timing.lib',
@@ -130,12 +115,12 @@ async function analyzeTiming(workspace: string, top: string, timing: TimingOptio
   return code === 0 ? log : `${log}\nSTA ERROR: OpenSTA exited with status ${code}.`;
 }
 
-export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string, progress?: (stage: SynthesisStage) => void, timing?: TimingOptions): Promise<BuildResult> {
+export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string, progress?: (stage: SynthesisStage) => void, timing?: TimingOptions, fpga?: FpgaOptions): Promise<BuildResult> {
   let workspace: string | undefined;
   try {
     workspace = await mkdtemp(join(tmpdir(), 'vscode-verilog-'));
     const executableName = process.platform === 'win32' ? 'yosys.exe' : 'yosys';
-    const root = configuredRoot || process.env.VERILOG_IDE_TOOLCHAIN;
+    const root = fpga?.yosysRoot || configuredRoot || process.env.VERILOG_IDE_TOOLCHAIN;
     const executableFile = lint ? (process.platform === 'win32' ? 'slang.exe' : 'slang') : executableName;
     const executable = root ? join(resolve(root), 'bin', executableFile) : executableFile;
     const environment = { ...process.env };
@@ -165,19 +150,30 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
       await writeFile(join(workspace, 'timing.lib'), await readFile(timing.liberty));
       await writeFile(join(workspace, 'timing.sdc'), await readFile(timing.sdc));
     }
-    const { args, script } = buildScript(options, inputs, [...includes], lint, !!timing);
+    const fpgaDevice = fpga && await fpgaDatabase(fpga.openXc7Root, fpga.part);
+    if (fpga) await writeFile(join(workspace, 'board.xdc'), await readFile(fpga.constraints));
+    const { args, script } = buildScript(options, inputs, [...includes], lint, !!timing, !!fpga);
     await writeFile(join(workspace, 'job.ys'), script, 'utf8');
     await writeFile(join(workspace, 'inputs.f'), args, 'utf8');
     progress?.('synthesis');
-    const { code, log } = await run(executable, lint ? ['-F', 'inputs.f'] : ['-Q', '-T', '-s', 'job.ys'], workspace, environment);
+    const { code, log } = await run(executable, lint ? ['-F', 'inputs.f'] : ['-Q', '-T', '-s', 'job.ys'], workspace, environment, fpga ? 600_000 : undefined);
     const result: BuildResult = { ok: code === 0, log: log || (code === 0 ? '' : `HDL 工具退出状态：${code}`), diagnostics: diagnostics(log, files) };
     if (!lint) result.log = `[job.ys]\n${script}\n\n[inputs.f]\n${args}\n\n${result.log}`;
     if (!result.ok || lint) return result;
     progress?.('netlist');
     result.netlist = JSON.parse(await readFile(join(workspace, 'design.json'), 'utf8')) as Netlist;
-    result.sourceNetlist = JSON.parse(await readFile(join(workspace, 'source.json'), 'utf8')) as Netlist;
+    if (!fpga) result.sourceNetlist = JSON.parse(await readFile(join(workspace, 'source.json'), 'utf8')) as Netlist;
     result.top = Object.keys(result.netlist.modules).find(name => /1$/.test(result.netlist!.modules[name].attributes?.top ?? ''));
     if (!result.top) throw new Error('网表没有顶层模块。请指定顶层模块。');
+    if (fpga && fpgaDevice) {
+      try {
+        result.bitstream = await buildFpgaBitstream(workspace, fpga, fpgaDevice,
+          log => { result.log += log; }, progress);
+      } catch (error) {
+        result.ok = false;
+        result.log += '\n' + String(error);
+      }
+    }
     if (timing) {
       progress?.('sta');
       try {

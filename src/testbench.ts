@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { run } from './backend';
+import { run } from './tool-process';
 import { parseVcd } from './vcd';
 import type { BuildResult, Source } from './protocol';
 import type { WaveTrace } from './vcd';

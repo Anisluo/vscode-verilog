@@ -50,6 +50,8 @@ export const workbench = {
     ask<BuildResult>('hdl', { options, lint }, progress),
   sta: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
     ask<{ ok: boolean; log: string; top?: string; liberty: string; sdc: string; demo: boolean }>('sta', { options }, progress),
+  fpga: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
+    ask<{ output?: string; part: string; top?: string; log: string }>('fpga', { options }, progress),
   elkWorkerUrl: workerUrls[2],
   worker: (name: 'layout-worker' | 'sim-worker') => new Worker(workerUrls[workerNames.indexOf(name)]),
   connect: (listener: SourceUpdate, onTestbench: (result?: TestbenchResult) => void) => {

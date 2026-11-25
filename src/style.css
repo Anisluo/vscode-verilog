@@ -252,14 +252,14 @@ dialog p { margin: 0; }
 }
 .vscode-workbench .workbench-tabs button:focus-visible { outline-offset: -2px; }
 .workbench-header { flex: none; flex-wrap: wrap; }
-#log-pane, #sta-pane { flex: 1; min-height: 0; overflow: auto; padding: 5px; }
-#sta-pane { padding: 12px; }
+#log-pane, #sta-pane, #fpga-pane { flex: 1; min-height: 0; overflow: auto; padding: 5px; }
+#sta-pane, #fpga-pane { padding: 12px; }
 #sta-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 #sta-summary > div { padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; }
 #sta-summary dd { margin: 4px 0 0; font-family: var(--mono); }
 #sta-summary .error { color: var(--vscode-errorForeground, #f66); }
 #sta-inputs { color: var(--muted); }
-#sta-report { margin: 0; font: 12px/1.45 var(--mono); }
+#sta-report, #fpga-report { margin: 0; font: 12px/1.45 var(--mono); }
 .vscode-workbench :is(.transport, .watch-list, .watch-heading) { background: var(--panel); }
 .vscode-workbench :is(.watch-heading, .watch-row, .signal-row, .part-row, .signal-menu, dialog) { border-color: var(--line); }
 .vscode-workbench #wave-scroll { background: var(--background); }

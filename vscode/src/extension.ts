@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { hdlJob } from '../../src/backend';
+import type { FpgaOptions } from '../../src/fpga';
 import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
@@ -226,14 +227,15 @@ export function activate(context: vscode.ExtensionContext) {
           const choice = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true });
           await reply(choice?.[0]?.fsPath);
         }
-        if (message.type === 'hdl' || message.type === 'sta') {
+        if (message.type === 'hdl' || message.type === 'sta' || message.type === 'fpga') {
           if (!vscode.workspace.isTrusted) throw new Error('请在受信任的工作区运行 HDL 工具。');
-          const snapshot = sources;
+          let snapshot = sources;
+          const document = primary;
           const version = ++diagnosticVersion;
           const { options, lint } = message.payload as { options: BuildOptions; lint?: boolean };
           const config = configuration();
           const root = config.get<string>('toolchainPath', '').trim();
-          const folder = primary && (vscode.workspace.getWorkspaceFolder(primary.uri)?.uri.fsPath ?? dirname(primary.fileName));
+          const folder = document && (vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? dirname(document.fileName));
           const toolchain = root ? resolve(folder ?? '', root)
             : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
           let timing: TimingOptions | undefined;
@@ -254,16 +256,58 @@ export function activate(context: vscode.ExtensionContext) {
               wslDistro: wslDistro || undefined,
             };
           }
+          let fpga: FpgaOptions | undefined;
+          let bitstreamDirectory: string | undefined;
+          if (message.type === 'fpga') {
+            const openXc7Root = config.get<string>('fpgaToolchainPath', '').trim();
+            const yosysRoot = config.get<string>('fpgaYosysPath', '').trim();
+            if (!openXc7Root || !yosysRoot) {
+              throw new Error('请配置 verilogWorkbench.fpgaToolchainPath（openXC7）和 verilogWorkbench.fpgaYosysPath（匹配的 OSS CAD Suite）。');
+            }
+            const part = config.get<string>('fpgaPart', '').trim().toLowerCase();
+            const xdc = config.get<string>('fpgaXdc', '').trim();
+            const demo = document?.uri.toString() === example.toString() && !part && !xdc;
+            if (!demo && (!part || !xdc)) throw new Error('请同时配置 verilogWorkbench.fpgaPart 和 verilogWorkbench.fpgaXdc。');
+            if (!demo && document?.uri.scheme !== 'file') throw new Error('请先将 FPGA 顶层源码保存到磁盘。');
+            const demoRoot = join(context.extensionPath, 'examples', 'fpga');
+            if (demo) {
+              const name = 'fifo_zybo_z7_10.v';
+              const path = join(demoRoot, name);
+              snapshot = [...snapshot, { id: vscode.Uri.file(path).toString(), path, name, text: await readFile(path, 'utf8') }];
+              options.top = 'fifo_zybo_z7_10';
+            }
+            fpga = {
+              part: demo ? 'xc7z010clg400-1' : part,
+              constraints: demo ? join(demoRoot, 'fifo_zybo_z7_10.xdc') : resolve(folder ?? '', xdc),
+              openXc7Root: resolve(openXc7Root),
+              yosysRoot: resolve(yosysRoot),
+            };
+            bitstreamDirectory = demo ? join(context.globalStorageUri.fsPath, 'fpga') : join(folder!, 'build');
+          }
           const result = await hdlJob(snapshot, options, !!lint, toolchain, lint ? undefined : stage => {
             if (target === panel) void target.webview.postMessage({ type: 'synthesis-stage', id: message.id, stage });
-          }, timing);
+          }, timing, fpga);
           if (target === panel && version === diagnosticVersion) publish(result.diagnostics, snapshot);
           if (timing) await reply({
             ok: result.ok, log: result.timingReport ?? result.log, top: result.top,
             liberty: basename(timing.liberty), sdc: basename(timing.sdc),
             demo: !config.get<string>('staLiberty', '').trim(),
           });
-          else await reply(result);
+          else if (fpga && bitstreamDirectory) {
+            let output: string | undefined;
+            if (result.ok && result.bitstream && result.top && /^[\w$]+$/.test(result.top)) {
+              await mkdir(bitstreamDirectory, { recursive: true });
+              output = join(bitstreamDirectory, `${result.top}-${fpga.part}.bit`);
+              const temporary = output + '.' + randomBytes(8).toString('hex') + '.tmp';
+              try {
+                await writeFile(temporary, result.bitstream);
+                await rename(temporary, output);
+              } finally {
+                await rm(temporary, { force: true }).catch(() => {});
+              }
+            }
+            await reply({ output, part: fpga.part, top: result.top, log: result.log });
+          } else await reply(result);
         }
       } catch (error) {
         await reply(undefined, error instanceof Error ? error.message : String(error));
