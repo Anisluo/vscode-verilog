@@ -11,7 +11,10 @@
   <main>
     <header class="panel-header workbench-header" aria-label="综合">
       <span id="lint-status"></span>
-      <div class="synth-actions"><button id="synthesize" class="primary icon-button"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3l8 5-8 5z"/></svg>Synthesis</button><button id="run-sta" class="primary">Run STA</button><button id="settings" class="primary icon-button" aria-label="综合设置" title="综合设置" aria-haspopup="dialog"><svg class="button-icon filled-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12l-6 6z"/></svg></button></div>
+      <div class="synth-actions">
+        <div class="synth-button-group"><button id="synthesize" class="primary icon-button"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3l8 5-8 5z"/></svg>Synthesis</button><button id="settings" class="primary icon-button" aria-label="综合设置" title="综合设置" aria-haspopup="dialog"><svg class="button-icon filled-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12l-6 6z"/></svg></button></div>
+        <button id="run-sta" class="primary">Run STA</button>
+      </div>
     </header>
     <div id="synthesis-progress" class="synthesis-progress" hidden>
       <progress aria-label="综合进度"></progress>
