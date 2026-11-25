@@ -73,10 +73,12 @@ function layoutNodes(parts: Part[], nets: WireNet[], portWidths: Map<string, num
     const barX = adapter ? labelSpace('left') : undefined;
     const interfaceSideWidth = (side: Terminal['side']) => Math.max(3, ...sides[side].map(({ pin }) =>
       portWidths.get(pin.signal ?? '') ?? 0));
+    const portWidth = portWidths.get(part.id);
     const width = part.interfaceOnly
       ? Math.max(Math.ceil((part.name.length * 7 + 28) / grid), interfaceSideWidth('left') + interfaceSideWidth('right') + 2)
-      : barX !== undefined ? barX + labelSpace('right') : portWidths.get(part.id)
-        ?? (kind === 'tribuf' ? Math.ceil(triBufferWidth / grid) : gateKinds.has(kind) ? 9 : kind === 'mux' ? 7
+      : barX !== undefined ? barX + labelSpace('right') : portWidth !== undefined
+        ? Math.max(portWidth, Math.ceil((part.name.length * 8 + (kind === 'clock' ? 39 : 26)) / grid))
+        : (kind === 'tribuf' ? Math.ceil(triBufferWidth / grid) : gateKinds.has(kind) ? 9 : kind === 'mux' ? 7
           : Math.max(7, Math.min(17, Math.ceil((partTitle(part).length * 7 + 22) / grid))));
     const cellType = part.signal || adapter ? undefined : part.type;
     if (cellType) {
@@ -205,8 +207,13 @@ export class Schematic {
       this.overlay = undefined; this.traces.clear();
     }
     const signalById = new Map(signals.map(signal => [signal.id, signal]));
-    const { nets, parts } = scope.parts[0]?.interfaceOnly
-      ? { nets: [], parts: scope.parts }
+    const module = scope.parts[0];
+    const { nets, parts } = module?.interfaceOnly
+      ? { parts: scope.parts, nets: module.pins.map((pin, index): WireNet => ({
+        signal: signalById.get(pin.signal!)!,
+        aliases: [],
+        endpoints: [{ part: 0, pin: index, key: `0:${index}` }, { part: index + 1, pin: 0, key: `${index + 1}:0` }],
+      })) }
       : diagramConnections(scope, signals);
     const { nodes, elkNodes, edges, ends } = layoutNodes(parts, nets, this.portWidths);
     const layout = this.createLayoutWorker();

@@ -7,6 +7,7 @@ export interface WaveTrace {
   end: number;
   signals: Signal[];
   waves: Record<string, Change<Vector>[]>;
+  aliases: Record<string, string>;
 }
 
 const units: Record<string, number> = { s: 1e12, ms: 1e9, us: 1e6, ns: 1000, ps: 1, fs: .001 };
@@ -17,6 +18,7 @@ export function parseVcd(text: string): WaveTrace {
   const signals: Signal[] = [];
   const waves: WaveTrace['waves'] = Object.create(null);
   const codes = new Map<string, string[]>();
+  const aliases: WaveTrace['aliases'] = {};
   let stepPs = 0;
   let time = 0;
   let bit = 0;
@@ -51,6 +53,7 @@ export function parseVcd(text: string): WaveTrace {
         if (bit + width > 200_000 || signals.length >= 5000) throw new Error('VCD 包含过多信号。');
         const id = String(signals.length);
         const series = codes.get(code) ?? [];
+        aliases[id] = series[0] ?? id;
         series.push(id);
         codes.set(code, series);
         waves[id] = [];
@@ -98,7 +101,7 @@ export function parseVcd(text: string): WaveTrace {
       }
     }
   }
-  return { stepPs, end: time, signals, waves };
+  return { stepPs, end: time, signals, waves, aliases };
 }
 
 export function changeAt(changes: readonly Change<Vector>[], time: number): number {

@@ -622,6 +622,21 @@ function linkTraceDiagram(source: WaveTrace, diagram: Design) {
     return signal.bits && dumped?.width === signal.width ? [{ signal, dumped }] : [];
   });
 }
+function testbenchPortName(source: WaveTrace, dumped: Signal): string | undefined {
+  const candidates = source.signals.filter(signal => signal.id !== dumped.id && signal.width === dumped.width &&
+    !signal.name.includes('.'));
+  const aliases = candidates.filter(signal => source.aliases[signal.id] === source.aliases[dumped.id]);
+  if (aliases.length === 1) return aliases[0].name;
+  // Icarus can emit separate VCD identifiers for the two sides of a vector port.
+  const name = dumped.name.split('.').at(-1);
+  const sameName = candidates.find(signal => signal.name === name);
+  if (!sameName) return undefined;
+  if (aliases.includes(sameName)) return sameName.name;
+  const portWave = source.waves[dumped.id];
+  const testbenchWave = source.waves[sameName.id];
+  if (portWave.length && portWave.length === testbenchWave.length && portWave.every(({ time, value }, index) =>
+    time === testbenchWave[index].time && value.every((bit, lane) => bit === testbenchWave[index].value[lane]))) return sameName.name;
+}
 function traceDiagramValues(source: WaveTrace): Vector {
   const values: Vector = [];
   for (const { signal, dumped } of traceDiagramSignals) {
@@ -648,10 +663,21 @@ function loadTestbenchDiagram(result?: BuildResult) {
     return signal?.bits && signal.direction
       ? [{ name: part.name, bits: signal.bits, direction: signal.direction, signal: signal.id }] : [];
   });
+  const dumpedByPort = new Map(traceDiagramSignals.map(({ signal, dumped }) => [signal.id, dumped]));
+  const terminals: Part[] = pins.map(pin => {
+    const signal = signals.get(pin.signal)!;
+    const dumped = dumpedByPort.get(pin.signal);
+    const name = (trace && dumped && testbenchPortName(trace, dumped)) || pin.name;
+    return {
+      id: pin.signal, signal: pin.signal, name,
+      type: pin.direction === 'input' && (signal.clock || dumped?.clock) ? 'clock' : pin.direction,
+      pins: [{ name, bits: pin.bits, direction: pin.direction === 'input' ? 'output' : pin.direction === 'output' ? 'input' : 'inout' }],
+    };
+  });
   const id = JSON.stringify([]);
   dutOverview = {
     id, label: 'DUT', signalIds: pins.map(pin => pin.signal),
-    parts: [{ id, name: result.top, type: result.top, child: root.id, interfaceOnly: true, pins }],
+    parts: [{ id, name: result.top, type: result.top, child: root.id, interfaceOnly: true, pins }, ...terminals],
   };
   scopes = [id];
   void showScope();
