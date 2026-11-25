@@ -33,7 +33,13 @@ function quote(value: string) {
   return `"${value}"`;
 }
 
-function buildScript(options: BuildOptions, files: string[], includes: string[], lint: boolean) {
+export interface TimingOptions {
+  liberty: string;
+  sdc: string;
+  executable?: string;
+  wslDistro?: string;
+}
+function buildScript(options: BuildOptions, files: string[], includes: string[], lint: boolean, timing: boolean) {
   const { standard, top, mode, hierarchy, optimize, abc, observe, defines, parameters } = options;
   if (!['1364-2005', '1800-2017', '1800-2023'].includes(standard)) throw new Error('不支持的语言版本。');
   if (top && !/^[\w$]+$/.test(top)) throw new Error('顶层模块需为常规 HDL 标识符。');
@@ -49,6 +55,12 @@ function buildScript(options: BuildOptions, files: string[], includes: string[],
   const commands = ['read_slang -F inputs.f'];
   if (lint) return { args, script: commands[0] };
   commands.push('hierarchy -check -auto-top', 'proc', 'write_json source.json');
+  if (timing) {
+    commands.push('synth -flatten -noabc', 'dfflibmap -liberty timing.lib',
+      'scratchpad -set abc.nocleanup 1', 'abc -liberty timing.lib', 'clean', 'read_liberty -lib timing.lib', 'check -assert -mapped',
+      'write_verilog -noattr -noexpr -nohex timing.v', 'write_json design.json');
+    return { args, script: commands.join('\n') };
+  }
   if (observe) commands.push('setattr -set keep 1 w:*');
   if (mode === 'gate') {
     // Relative ABC scratch paths work with spaces and '#' in user profiles.
@@ -87,7 +99,38 @@ function diagnostics(log: string, files: Map<string, Source>) {
   return result;
 }
 
-export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string, progress?: (stage: SynthesisStage) => void): Promise<BuildResult> {
+async function analyzeTiming(workspace: string, top: string, timing: TimingOptions) {
+  if (!/^[A-Za-z_][\w$]*$/.test(top)) throw new Error('STA 需要常规 HDL 顶层模块名。');
+  const script = `if {[catch {
+  read_liberty timing.lib
+  read_verilog timing.v
+  link_design {${top}}
+  read_sdc timing.sdc
+  if {[llength [get_clocks *]] == 0} { error {No clock was defined by the SDC.} }
+  puts "\n=== Constraint coverage ==="
+  if {[llength [info commands report_units]]} { report_units }
+  check_setup -verbose
+  puts "\n=== Setup (max delay), worst paths first ==="
+  report_checks -path_delay max -sort_by_slack -digits 3
+  puts "\n=== Hold (min delay), worst paths first ==="
+  report_checks -path_delay min -sort_by_slack -digits 3
+} message]} {
+  puts stderr "STA ERROR: $message"
+  exit 1
+}
+`;
+  await writeFile(join(workspace, 'timing.tcl'), script, 'utf8');
+  const staArgs = ['-no_init', '-exit', 'timing.tcl'];
+  const useWsl = process.platform === 'win32' && !timing.executable;
+  const executable = useWsl ? 'wsl.exe' : timing.executable || 'sta';
+  const args = useWsl
+    ? [...(timing.wslDistro ? ['-d', timing.wslDistro] : []), '--cd', workspace, '--exec', 'sta', ...staArgs]
+    : staArgs;
+  const { code, log } = await run(executable, args, workspace, { ...process.env, WSL_UTF8: '1' });
+  return code === 0 ? log : `${log}\nSTA ERROR: OpenSTA exited with status ${code}.`;
+}
+
+export async function hdlJob(sources: Source[], options: BuildOptions, lint: boolean, configuredRoot?: string, progress?: (stage: SynthesisStage) => void, timing?: TimingOptions): Promise<BuildResult> {
   let workspace: string | undefined;
   try {
     workspace = await mkdtemp(join(tmpdir(), 'vscode-verilog-'));
@@ -118,7 +161,11 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
       if (!/\.(svh|vh)$/i.test(source.name)) inputs.push(relative);
     }
     if (!inputs.length) return { ok: false, log: '请打开或新建 HDL 源文件。', diagnostics: [] };
-    const { args, script } = buildScript(options, inputs, [...includes], lint);
+    if (timing) {
+      await writeFile(join(workspace, 'timing.lib'), await readFile(timing.liberty));
+      await writeFile(join(workspace, 'timing.sdc'), await readFile(timing.sdc));
+    }
+    const { args, script } = buildScript(options, inputs, [...includes], lint, !!timing);
     await writeFile(join(workspace, 'job.ys'), script, 'utf8');
     await writeFile(join(workspace, 'inputs.f'), args, 'utf8');
     progress?.('synthesis');
@@ -131,6 +178,16 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
     result.sourceNetlist = JSON.parse(await readFile(join(workspace, 'source.json'), 'utf8')) as Netlist;
     result.top = Object.keys(result.netlist.modules).find(name => /1$/.test(result.netlist!.modules[name].attributes?.top ?? ''));
     if (!result.top) throw new Error('网表没有顶层模块。请指定顶层模块。');
+    if (timing) {
+      progress?.('sta');
+      try {
+        result.timingReport = await analyzeTiming(workspace, result.top, timing);
+        result.ok = !/^Error:|^STA ERROR:/m.test(result.timingReport);
+      } catch (error) {
+        result.ok = false;
+        result.timingReport = String(error);
+      }
+    }
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

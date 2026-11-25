@@ -5,7 +5,7 @@ export interface Source {
   text: string;
 }
 
-export type SynthesisStage = 'synthesis' | 'netlist';
+export type SynthesisStage = 'synthesis' | 'netlist' | 'sta';
 
 export interface BuildOptions {
   standard: '1364-2005' | '1800-2017' | '1800-2023';
@@ -61,6 +61,7 @@ export interface Diagnostic {
   message: string;
 }
 export interface BuildResult {
+  timingReport?: string;
   ok: boolean;
   log: string;
   diagnostics: Diagnostic[];

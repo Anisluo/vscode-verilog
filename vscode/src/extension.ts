@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { hdlJob } from '../../src/backend';
+import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
 import type { BuildOptions, Diagnostic, Source } from '../../src/protocol';
@@ -225,20 +226,44 @@ export function activate(context: vscode.ExtensionContext) {
           const choice = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true });
           await reply(choice?.[0]?.fsPath);
         }
-        if (message.type === 'hdl') {
+        if (message.type === 'hdl' || message.type === 'sta') {
           if (!vscode.workspace.isTrusted) throw new Error('请在受信任的工作区运行 HDL 工具。');
           const snapshot = sources;
           const version = ++diagnosticVersion;
-          const { options, lint } = message.payload as { options: BuildOptions; lint: boolean };
-          const root = configuration().get<string>('toolchainPath', '').trim();
+          const { options, lint } = message.payload as { options: BuildOptions; lint?: boolean };
+          const config = configuration();
+          const root = config.get<string>('toolchainPath', '').trim();
           const folder = primary && (vscode.workspace.getWorkspaceFolder(primary.uri)?.uri.fsPath ?? dirname(primary.fileName));
           const toolchain = root ? resolve(folder ?? '', root)
             : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
-          const result = await hdlJob(snapshot, options, lint, toolchain, lint ? undefined : stage => {
+          let timing: TimingOptions | undefined;
+          if (message.type === 'sta') {
+            const liberty = config.get<string>('staLiberty', '').trim();
+            const sdc = config.get<string>('staSdc', '').trim();
+            const executable = config.get<string>('staExecutable', '').trim();
+            const wslDistro = config.get<string>('staWslDistro', '').trim();
+            const demo = primary?.uri.toString() === example.toString();
+            const demoRoot = join(context.extensionPath, 'examples', 'sta');
+            if ((!liberty || !sdc) && (liberty || sdc || !demo)) {
+              throw new Error('请同时设置 verilogWorkbench.staLiberty 和 verilogWorkbench.staSdc，或打开内置 FIFO 示例。');
+            }
+            timing = {
+              liberty: liberty ? resolve(folder ?? '', liberty) : join(demoRoot, 'fifo_demo.lib'),
+              sdc: sdc ? resolve(folder ?? '', sdc) : join(demoRoot, 'fifo_4x8.sdc'),
+              executable: executable || undefined,
+              wslDistro: wslDistro || undefined,
+            };
+          }
+          const result = await hdlJob(snapshot, options, !!lint, toolchain, lint ? undefined : stage => {
             if (target === panel) void target.webview.postMessage({ type: 'synthesis-stage', id: message.id, stage });
-          });
+          }, timing);
           if (target === panel && version === diagnosticVersion) publish(result.diagnostics, snapshot);
-          await reply(result);
+          if (timing) await reply({
+            ok: result.ok, log: result.timingReport ?? result.log, top: result.top,
+            liberty: basename(timing.liberty), sdc: basename(timing.sdc),
+            demo: !config.get<string>('staLiberty', '').trim(),
+          });
+          else await reply(result);
         }
       } catch (error) {
         await reply(undefined, error instanceof Error ? error.message : String(error));

@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -84,6 +84,30 @@
           "default": "",
           "scope": "resource",
           "description": "Icarus 仿真的顶层模块名。留空时使用 testbench 文件名。"
+        },
+        "verilogWorkbench.staLiberty": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "STA 使用的 Liberty .lib 文件。相对路径以工作区或源码目录为准。"
+        },
+        "verilogWorkbench.staSdc": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "STA 使用的 SDC 文件。请提供自包含的约束文件。相对路径以工作区或源码目录为准。"
+        },
+        "verilogWorkbench.staExecutable": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "OpenSTA 本机可执行文件的绝对路径。留空时 Windows 使用 WSL，其他系统从 PATH 查找 sta。"
+        },
+        "verilogWorkbench.staWslDistro": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Windows 上运行 OpenSTA 的 WSL 发行版名称。留空使用默认发行版。"
         }
       }
     }

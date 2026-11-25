@@ -29,3 +29,11 @@ vvp -N fifo_4x8_tb.vvp
 扩展开发与维护由 [Anisluo](https://github.com/Anisluo) 负责。
 
 完整安装步骤和当前版本的操作演示见 [项目首页](https://github.com/Anisluo/vscode-verilog#readme)。原始实现的版权归属见项目的 MIT 许可。
+
+## OpenSTA 静态时序分析
+
+执行 **Verilog: 打开 FIFO 示例**，然后在综合工作台点击 **Run STA**。扩展用 Yosys 将 FIFO 映射到内置示例 Liberty，再按示例 SDC 调用 OpenSTA。**STA** 标签内显示 Setup 和 Hold 的最差 slack、路径明细与约束覆盖检查。示例使用 1 ns 时钟周期和教学用单元延迟模型，结果属于布局布线前的分析。
+
+OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debian 中执行 `sudo apt install opensta`），可用 `verilogWorkbench.staWslDistro` 指定发行版。也可用 `verilogWorkbench.staExecutable` 指定本机可执行文件的绝对路径。Linux 默认从 PATH 查找 `sta`。
+
+分析自己的模块时，设置 `verilogWorkbench.staLiberty` 和 `verilogWorkbench.staSdc`。两者可以使用绝对路径或相对于工作区的路径。SDC 应包含时钟与所需的 I/O 约束，并为自包含文件。检查报告中是否有未约束端点，再解读 slack。

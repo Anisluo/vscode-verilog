@@ -39,6 +39,7 @@ let lintTimer: ReturnType<typeof setTimeout>;
 let lintBusy = false;
 let lintQueued = false;
 let synthesisBusy = false;
+let staBusy = false;
 let synthesisQueued = false;
 let logMode: 'lint' | 'synth' = 'lint';
 let design: Design | undefined;
@@ -282,12 +283,13 @@ function beginSynthesisProgress() {
 }
 
 async function synthesize() {
-  if (!hostSources.length) return;
+  if (!hostSources.length || staBusy) return;
   if (synthesisBusy) { synthesisQueued = true; return; }
   const currentOptions = options();
   const started = revision;
   synthesisBusy = true;
   button('synthesize').disabled = true;
+  button('run-sta').disabled = true;
   el('schematic').setAttribute('aria-busy', 'true');
   ++jobSequence;
   logMode = 'synth';
@@ -351,12 +353,56 @@ async function synthesize() {
     } else {
       if (builtMode && selectedMode !== builtMode) setModeTab(builtMode);
       button('synthesize').disabled = false;
+      button('run-sta').disabled = false;
       el('schematic').setAttribute('aria-busy', 'false');
     }
   }
 }
 
-const workbenchTabs = ['view-diagram', 'view-wave', 'view-log'].map(button);
+async function runSta() {
+  if (!hostSources.length || synthesisBusy || staBusy) return;
+  staBusy = true;
+  const started = revision;
+  button('run-sta').disabled = button('synthesize').disabled = true;
+  el('sta-summary').hidden = true;
+  el('sta-inputs').textContent = '';
+  el('sta-report').textContent = '正在准备 STA…';
+  selectWorkbenchTab(button('view-sta'));
+  status('正在运行 STA…');
+  const progress = beginSynthesisProgress();
+  progress.update('正在准备 STA…');
+  try {
+    const result = await workbench.sta(options(), stage => {
+      const label = stage === 'sta' ? 'OpenSTA 正在分析…' : stage === 'netlist' ? '正在检查映射网表…' : 'Yosys 正在映射标准单元…';
+      progress.update(label);
+      el('sta-report').textContent = label;
+    });
+    el('sta-inputs').textContent = [result.top, result.liberty, result.sdc,
+      result.demo ? 'FIFO 示例模型 · ns · 布局布线前' : 'Liberty 时间单位 · 布局布线前'].filter(Boolean).join(' · ');
+    el('sta-report').textContent = result.log;
+    if (!result.ok) { status('STA 运行失败，请查看报告。', true); return; }
+    const [, setup = '', hold = ''] = result.log.split(/^=== (?:Setup|Hold) .* ===$/m);
+    const slack = (section: string) => section.match(/^\s*([-+]?\d+(?:\.\d+)?)\s+slack \((MET|VIOLATED)\)/m);
+    const setupSlack = slack(setup);
+    const holdSlack = slack(hold);
+    for (const [id, entry] of [['sta-setup', setupSlack], ['sta-hold', holdSlack]] as const) {
+      const field = el(id);
+      field.textContent = entry ? `${entry[1]}${result.demo ? ' ns' : ''} · ${entry[2]}` : '无可报告路径';
+      field.classList.toggle('error', entry?.[2] === 'VIOLATED');
+    }
+    el('sta-summary').hidden = false;
+    status(started === revision ? 'STA 报告已生成。' : 'STA 报告基于运行前的源码和设置，请重新运行。');
+  } catch (error) {
+    el('sta-report').textContent = String(error);
+    status('STA 运行失败，请查看报告。', true);
+  } finally {
+    progress.finish();
+    staBusy = false;
+    button('run-sta').disabled = button('synthesize').disabled = false;
+  }
+}
+
+const workbenchTabs = ['view-diagram', 'view-wave', 'view-sta', 'view-log'].map(button);
 function selectWorkbenchTab(selected: HTMLButtonElement) {
   for (const tab of workbenchTabs) {
     const active = tab === selected;
@@ -383,6 +429,7 @@ function bindWorkbenchTabs() {
   }
   if (!testbenchView) button('view-wave').hidden = true;
   else {
+    button('view-sta').hidden = true;
     button('mode-gate').hidden = true;
     el('schematic').querySelector('.empty')!.textContent = '正在准备被测模块的 RTL 电路图…';
   }
@@ -900,6 +947,7 @@ for (const mode of modes) {
   };
 }
 on('synthesize', 'click', () => { void synthesize(); });
+on('run-sta', 'click', () => { void runSta(); });
 on('show-signals', 'click', () => { inspector = 'signals'; renderInspector(); });
 on('show-parts', 'click', () => { inspector = 'parts'; renderInspector(); });
 on('signal-filter', 'input', renderInspector);
