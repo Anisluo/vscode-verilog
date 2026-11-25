@@ -90,7 +90,7 @@ const schematic = new Schematic(
   workbench.elkWorkerUrl,
 );
 const waveform = new Waveform(el('wave'), el('wave-scroll'), handleWave, zoomWave,
-  (start, finish) => setView(start, finish - start), panWave, openRadixMenu, signal => {
+  (start, finish) => setView(start, finish - start), setView, openRadixMenu, signal => {
   setWatched(signal, false);
   renderInspector();
 }, showWaveSignals, (id, index) => {
@@ -628,22 +628,12 @@ function setView(start: number, span: number) {
   draw();
   request();
 }
-function panWave(start: number, span: number) {
-  button('follow').setAttribute('aria-pressed', 'false');
-  setView(start, span);
-}
-function zoomWave(scale: number, anchor?: number) {
-  const focal = anchor ?? (cursor >= viewStart && cursor <= viewEnd() ? cursor : Math.round((viewStart + viewEnd()) / 2));
+function zoomWave(scale: number, anchor: number) {
   const next = Math.max(1, Math.min(end, Math.round(viewSpan * scale)));
-  if (next !== viewSpan) setView(focal - (focal - viewStart) * next / viewSpan, next);
-}
-function focusCursor() {
-  if (button('follow').getAttribute('aria-pressed') !== 'true' || (cursor >= viewStart && cursor < viewEnd())) return;
-  viewStart = Math.max(0, Math.min(end - viewSpan, cursor - Math.floor(viewSpan * .2)));
+  if (next !== viewSpan) setView(anchor - (anchor - viewStart) * next / viewSpan, next);
 }
 function seek(time: number) {
   cursor = Math.max(0, Math.min(end, time));
-  focusCursor();
   if (trace) draw();
   else request();
 }
@@ -692,7 +682,6 @@ function shownValue(signal: Signal, time: number) {
 function submitEdit(signal: Signal, time: number, value: Vector, duration: Duration) {
   const start = duration === 'period' ? time - time % period : time;
   cursor = Math.min(cursor, start);
-  focusCursor();
   simulationError = '';
   request({ type: 'edit', id: signal.id, time, value, duration });
   status(`已更新 ${signal.name} · 从 ${nsAt(start)} ns 重算预览`);
@@ -711,8 +700,7 @@ function handleWave(time: number, signal?: Signal, alternate = false) {
   if ((!design && !trace) || simulationError || playing) return;
   if (!alternate) { seek(time); return; }
   if (!signal?.editable || signal.clock) return;
-  const duration = select('duration').value as Duration;
-  showValue(signal, time, duration, false, shownValue(signal, time));
+  showValue(signal, time, 'period', false, shownValue(signal, time));
 }
 
 let editing: { signal: Signal; time: number; diagram: boolean; changedRadix: boolean } | undefined;
@@ -886,8 +874,6 @@ on('critical-path', 'click', () => {
   toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true'));
   refreshCriticalPath();
 });
-on('wave-in', 'click', () => zoomWave(.5));
-on('wave-out', 'click', () => zoomWave(2));
 on('wave-fit', 'click', () => setView(0, end));
 document.addEventListener('keydown', event => {
   if ((event.code !== 'Space' && event.key !== ' ') || event.defaultPrevented || event.isComposing ||
@@ -895,16 +881,9 @@ document.addEventListener('keydown', event => {
       !el('wave-view').getClientRects().length || document.querySelector('dialog[open]')) return;
   const control = event.target instanceof Element
     ? event.target.closest('button, input, select, textarea, [contenteditable]') : null;
-  if (control && control.id !== 'view-wave' && !control.closest('.wave-actions')) return;
+  if (control && control.id !== 'view-wave' && control.id !== 'wave-fit') return;
   event.preventDefault();
   setView(0, end);
-});
-on('follow', 'click', () => {
-  const toggle = button('follow');
-  toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true'));
-  focusCursor();
-  if (trace) draw();
-  else request();
 });
 function changeAllDelays(zero: boolean) {
   if (!design) return;

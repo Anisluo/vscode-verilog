@@ -75,13 +75,7 @@
     <section class="wave-panel panel" id="wave-view" role="tabpanel" aria-labelledby="view-wave" hidden>
       <div class="panel-header">
         <span id="preview"></span><div class="spacer"></div>
-        <button id="follow" class="toggle-button" aria-pressed="true">跟随光标</button>
-        <label id="wave-edit-range">默认编辑范围 <select id="duration"><option value="step">仿真间隔</option><option value="period" selected>所在周期</option><option value="end">至结束</option></select></label>
-        <div class="wave-actions">
-          <button id="wave-out" class="icon-button" title="缩小时间轴" aria-label="缩小时间轴"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
-          <button id="wave-fit" class="fit-view" title="显示全程波形（空格）" aria-label="显示全程波形" aria-keyshortcuts="Space"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3 M10 3h3v3 M13 10v3h-3 M6 13H3v-3"/></svg></button>
-          <button id="wave-in" class="icon-button" title="放大时间轴" aria-label="放大时间轴"><svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10"/></svg></button>
-        </div>
+        <button id="wave-fit" class="fit-view" title="显示全程波形（空格）" aria-label="显示全程波形" aria-keyshortcuts="Space"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3 M10 3h3v3 M13 10v3h-3 M6 13H3v-3"/></svg></button>
       </div>
       <div id="wave-scroll"><canvas id="wave" aria-label="信号波形。滚轮缩放，左键横向拖选放大，右键拖动平移，空格恢复全程。左键单击移动光标，右键单击编辑输入激励。" tabindex="0"></canvas></div>
     </section>

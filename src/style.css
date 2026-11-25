@@ -49,9 +49,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .run { display: inline-flex; gap: 6px; align-items: center; justify-content: center; }
 .run svg { width: 13px; height: 13px; fill: currentColor; }
 .run:not(.playing) .pause-icon, .run.playing .play-icon { display: none; }
-.transport-buttons, .diagram-actions, .wave-actions { display: flex; gap: 5px; }
+.transport-buttons, .diagram-actions { display: flex; gap: 5px; }
 .transport { display: flex; align-items: center; }
-.transport label, .wave-panel .panel-header label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.transport label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .transport { gap: 14px; background: #141a22; }
 .transport form { display: flex; align-items: center; gap: 10px; }
 .transport form input { width: 66px; font-family: var(--mono); }
@@ -296,7 +296,7 @@ dialog p { margin: 0; }
 #wave-signal-options label span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #wave-signal-options label span:last-of-type { color: var(--muted); font: 11px var(--mono); }
 
-.testbench-view :is(.workbench-header, #timing, .transport-buttons, #wave-edit-range) { display: none; }
+.testbench-view :is(.workbench-header, #timing, .transport-buttons) { display: none; }
 
 .wave-cursor-handle {
   position: absolute;
@@ -322,9 +322,14 @@ dialog p { margin: 0; }
 .wave-cursor-handle.edge-snapped { outline: 1px solid var(--wave-cursor, #68ebd5); }
 
 .watch-name, .watch-value { cursor: grab; touch-action: none; user-select: none; }
-.watch-dragging { opacity: .48; }
+.watch-dragging {
+  z-index: 1;
+  background: color-mix(in srgb, var(--wave-cursor, var(--accent)) 30%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--wave-cursor, var(--accent));
+}
+.watch-dragging :is(.watch-name, .watch-value) { cursor: grabbing; }
 .watch-drop-indicator {
-  position: absolute; z-index: 1; left: 0; right: 0;
+  position: absolute; z-index: 2; left: 0; right: 0;
   height: 2px; background: var(--wave-cursor, var(--accent)); pointer-events: none;
 }
 

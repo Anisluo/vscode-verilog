@@ -57,7 +57,7 @@ export class Waveform {
   private readonly cursorHandle = document.createElement('div');
   private readonly rows = new Map<string, { row: HTMLElement; value: HTMLElement; base: HTMLButtonElement }>();
   constructor(private canvas: HTMLCanvasElement, private host: HTMLElement, onClick: (time: number, signal?: Signal, alternate?: boolean) => void,
-    onZoom: (scale: number, anchor?: number) => void, onZoomRange: (start: number, end: number) => void,
+    onZoom: (scale: number, anchor: number) => void, onZoomRange: (start: number, end: number) => void,
     onPan: (start: number, span: number) => void, private onRadix: (signal: Signal, x: number, y: number) => void,
     private remove: (signal: Signal) => void, onAdd: () => void,
     onReorder: (id: string, index: number) => void) {
@@ -269,6 +269,7 @@ export class Waveform {
       if (id === undefined) return;
       event.preventDefault();
       drag = { pointer: event.pointerId, id, originY: event.clientY, y: event.clientY, moved: false };
+      this.rows.get(id)?.row.classList.add('watch-dragging');
       this.list.setPointerCapture(event.pointerId);
     });
     document.addEventListener('pointermove', event => {
