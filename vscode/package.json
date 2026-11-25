@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -151,7 +151,7 @@
           ],
           "default": "asic",
           "scope": "resource",
-          "description": "综合工作台目标。ASIC 显示 OpenSTA，FPGA 显示 openXC7 比特流和 JTAG 下载。"
+          "description": "综合工作台目标。ASIC 使用 OpenSTA，FPGA 使用 nextpnr 时序分析并提供比特流与 JTAG 下载。"
         }
       }
     }

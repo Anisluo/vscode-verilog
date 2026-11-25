@@ -371,8 +371,11 @@ async function runSta() {
   if (!hostSources.length || synthesisBusy || staBusy || fpgaBusy || jtagBusy) return;
   staBusy = true;
   const started = revision;
+  const fpga = select('target-platform').value === 'fpga';
   disableBuildButtons(true);
+  el('sta-pane').dataset.platform = fpga ? 'fpga' : 'asic';
   el('sta-summary').hidden = true;
+  el('fpga-timing-clocks').hidden = true;
   el('sta-inputs').textContent = '';
   el('sta-report').textContent = '正在准备 STA…';
   selectWorkbenchTab(button('view-sta'));
@@ -380,6 +383,31 @@ async function runSta() {
   const progress = beginSynthesisProgress();
   progress.update('正在准备 STA…');
   try {
+    if (fpga) {
+      const result = await workbench.fpgaTiming(options(), stage => {
+        const label = stage === 'place-route' ? 'nextpnr 正在布局布线并分析 FPGA 时序…' : 'Yosys 正在综合 FPGA 网表…';
+        progress.update(label);
+        el('sta-report').textContent = label;
+      });
+      el('sta-inputs').textContent = [result.top, result.part, 'nextpnr · 布局布线后时序'].filter(Boolean).join(' · ');
+      el('sta-report').textContent = result.log;
+      if (!result.ok) { status('FPGA 时序分析失败，请查看报告。', true); return; }
+      const clocks = Object.entries(result.clocks ?? {});
+      const list = el('fpga-timing-clocks');
+      list.replaceChildren(...clocks.map(([name, { achieved, constraint }]) => {
+        const item = document.createElement('li');
+        const met = achieved >= constraint;
+        item.textContent = `${name} · Fmax ${achieved.toFixed(2)} MHz / 目标 ${constraint.toFixed(2)} MHz · ${met ? 'MET' : 'VIOLATED'}`;
+        item.classList.toggle('error', !met);
+        return item;
+      }));
+      list.hidden = !clocks.length;
+      const violated = clocks.some(([, clock]) => clock.achieved < clock.constraint);
+      status(started !== revision ? 'FPGA 时序报告基于运行前的源码和设置，请重新运行。'
+        : !clocks.length ? 'FPGA 时序报告没有可报告的时钟。'
+          : violated ? 'FPGA 时序未满足，请查看关键路径。' : 'FPGA 时序报告已生成。', violated);
+      return;
+    }
     const result = await workbench.sta(options(), stage => {
       const label = stage === 'sta' ? 'OpenSTA 正在分析…' : stage === 'netlist' ? '正在检查映射网表…' : 'Yosys 正在映射标准单元…';
       progress.update(label);
@@ -483,9 +511,16 @@ function selectWorkbenchTab(selected: HTMLButtonElement) {
 function showTargetPlatform(platform: TargetPlatform) {
   select('target-platform').value = platform;
   const fpga = platform === 'fpga';
-  button('run-sta').hidden = fpga || testbenchView;
+  button('run-sta').hidden = testbenchView;
   button('build-bitstream').hidden = !fpga || testbenchView;
-  button('view-sta').hidden = fpga || testbenchView;
+  if (el('sta-pane').dataset.platform && el('sta-pane').dataset.platform !== platform) {
+    el('sta-summary').hidden = true;
+    el('fpga-timing-clocks').hidden = true;
+    el('sta-inputs').textContent = '';
+    el('sta-report').textContent = '点击 Run STA 执行当前目标的时序分析。';
+    delete el('sta-pane').dataset.platform;
+  }
+  button('view-sta').hidden = testbenchView;
   button('view-fpga').hidden = !fpga || testbenchView;
   if (workbenchTabs.some(tab => tab.hidden && tab.getAttribute('aria-selected') === 'true')) {
     selectWorkbenchTab(button(testbenchView ? 'view-wave' : 'view-diagram'));

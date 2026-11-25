@@ -62,7 +62,10 @@ export interface Diagnostic {
   severity: 'error' | 'warning' | 'note';
   message: string;
 }
+export type FpgaClockTiming = Record<string, { achieved: number; constraint: number }>;
+
 export interface BuildResult {
+  fpgaTiming?: FpgaClockTiming;
   timingReport?: string;
   bitstream?: Uint8Array;
   ok: boolean;

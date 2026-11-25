@@ -249,7 +249,7 @@ export function activate(context: vscode.ExtensionContext) {
           const directory = primary?.uri.scheme === 'file' ? dirname(primary.fileName) : context.extensionPath;
           await reply(await runJlink(root ? resolve(root) : undefined, cable, directory, program ? builtBitstream : undefined));
         }
-        if (message.type === 'hdl' || message.type === 'sta' || message.type === 'fpga') {
+        if (message.type === 'hdl' || message.type === 'sta' || message.type === 'fpga' || message.type === 'fpga-timing') {
           if (!vscode.workspace.isTrusted) throw new Error('请在受信任的工作区运行 HDL 工具。');
           let snapshot = sources;
           const document = primary;
@@ -301,8 +301,8 @@ export function activate(context: vscode.ExtensionContext) {
           }
           let fpga: FpgaOptions | undefined;
           let bitstreamDirectory: string | undefined;
-          if (message.type === 'fpga') {
-            builtBitstream = undefined;
+          if (message.type === 'fpga' || message.type === 'fpga-timing') {
+            if (message.type === 'fpga') builtBitstream = undefined;
             const openXc7Root = config.get<string>('fpgaToolchainPath', '').trim();
             const yosysRoot = config.get<string>('fpgaYosysPath', '').trim();
             if (!openXc7Root || !yosysRoot) {
@@ -325,6 +325,7 @@ export function activate(context: vscode.ExtensionContext) {
               constraints: demo ? join(demoRoot, 'fifo_zybo_z7_10.xdc') : resolve(folder ?? '', xdc),
               openXc7Root: resolve(openXc7Root),
               yosysRoot: resolve(yosysRoot),
+              timingOnly: message.type === 'fpga-timing',
             };
             bitstreamDirectory = demo ? join(context.globalStorageUri.fsPath, 'fpga') : join(folder!, 'build');
           }
@@ -337,7 +338,9 @@ export function activate(context: vscode.ExtensionContext) {
             liberty: basename(timing.liberty), sdc: basename(timing.sdc),
             demo: timingDemo,
           });
-          else if (fpga && bitstreamDirectory) {
+          else if (fpga?.timingOnly) {
+            await reply({ ok: result.ok, part: fpga.part, top: result.top, log: result.log, clocks: result.fpgaTiming });
+          } else if (fpga && bitstreamDirectory) {
             let output: string | undefined;
             if (result.ok && result.bitstream && result.top && /^[\w$]+$/.test(result.top)) {
               await mkdir(bitstreamDirectory, { recursive: true });

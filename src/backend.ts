@@ -1,5 +1,5 @@
 import { run } from './tool-process';
-import { buildFpgaBitstream, fpgaDatabase } from './fpga';
+import { implementFpga, fpgaDatabase } from './fpga';
 import type { FpgaOptions } from './fpga';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -167,8 +167,10 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
     if (!result.top) throw new Error('网表没有顶层模块。请指定顶层模块。');
     if (fpga && fpgaDevice) {
       try {
-        result.bitstream = await buildFpgaBitstream(workspace, fpga, fpgaDevice,
+        const implementation = await implementFpga(workspace, fpga, fpgaDevice,
           log => { result.log += log; }, progress);
+        result.bitstream = implementation.bitstream;
+        result.fpgaTiming = implementation.clocks;
       } catch (error) {
         result.ok = false;
         result.log += '\n' + String(error);

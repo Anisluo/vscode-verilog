@@ -1,13 +1,14 @@
 import { access, readFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import { run } from './tool-process';
-import type { SynthesisStage } from './protocol';
+import type { FpgaClockTiming, SynthesisStage } from './protocol';
 
 export interface FpgaOptions {
   part: string;
   constraints: string;
   openXc7Root: string;
   yosysRoot: string;
+  timingOnly?: boolean;
 }
 
 const windows = process.platform === 'win32';
@@ -27,7 +28,7 @@ export async function fpgaDatabase(root: string, part: string) {
   return { database, device };
 }
 
-export async function buildFpgaBitstream(
+export async function implementFpga(
   workspace: string, fpga: FpgaOptions, { database, device }: Awaited<ReturnType<typeof fpgaDatabase>>,
   report: (log: string) => void, progress?: (stage: SynthesisStage) => void,
 ) {
@@ -49,9 +50,12 @@ export async function buildFpgaBitstream(
   };
   progress?.('place-route');
   await execute('nextpnr-xilinx', bin('nextpnr-xilinx'), [
-    '--device', part, '-o', 'xdc=board.xdc', '-o', 'fasm=design.fasm',
+    '--device', part, '-o', 'xdc=board.xdc',
     '--json', 'design.json', '--report', 'nextpnr.json',
+    ...(fpga.timingOnly ? ['--timing-allow-fail'] : ['-o', 'fasm=design.fasm']),
   ]);
+  const { fmax: clocks } = JSON.parse(await readFile(join(workspace, 'nextpnr.json'), 'utf8')) as { fmax?: FpgaClockTiming };
+  if (fpga.timingOnly) return { clocks };
   progress?.('bitstream');
   await execute('FASM → Frames', windows ? join(yosysRoot, 'lib', 'python3.exe') : bin('fasm2frames'), [
     ...(windows ? [join(openXc7Root, 'libexec', 'fasm2frames')] : []),
@@ -62,5 +66,5 @@ export async function buildFpgaBitstream(
   ]);
   const bitstream = await readFile(join(workspace, 'design.bit'));
   if (!bitstream.length) throw new Error('openXC7 生成了空的 .bit 文件。');
-  return bitstream;
+  return { clocks, bitstream };
 }

@@ -1,5 +1,5 @@
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, BuildResult, Diagnostic, Source, SynthesisStage, TargetPlatform } from '../../src/protocol';
+import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, Source, SynthesisStage, TargetPlatform } from '../../src/protocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -51,6 +51,8 @@ export const workbench = {
     ask<BuildResult>('hdl', { options, lint }, progress),
   sta: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
     ask<{ cancelled: true } | { cancelled?: false; ok: boolean; log: string; top?: string; liberty: string; sdc: string; demo: boolean }>('sta', { options }, progress),
+  fpgaTiming: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
+    ask<{ ok: boolean; part: string; top?: string; log: string; clocks?: FpgaClockTiming }>('fpga-timing', { options }, progress),
   fpga: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
     ask<{ output?: string; part: string; top?: string; log: string }>('fpga', { options }, progress),
   jtag: (program: boolean) => ask<{ ok: boolean; log: string }>(program ? 'jtag-program' : 'jtag-detect'),

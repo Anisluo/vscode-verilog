@@ -78,6 +78,8 @@ OpenSTA 需要单独安装。Windows 默认使用 WSL 的 `sta`（例如在 Debi
 
 ## 生成 Xilinx 7 系列 FPGA 比特流
 
+在 FPGA 目标下，点击 **Run STA** 可先运行 Yosys 和 nextpnr，查看目标器件布局布线后的时钟约束、Fmax 和关键路径。此操作只生成报告。**Build Bitstream** 会重新执行布局布线和时序检查，检查失败时停止生成 `.bit`。
+
 在综合工作台将 **Target** 设为 **Xilinx 7 Series (openXC7)**，再点击 **Build Bitstream**，依次运行 Yosys、nextpnr-xilinx 和 openXC7 比特流工具。**Bitstream** 标签显示编译日志和 `.bit` 文件位置。
 
 先解压 [openXC7 发布包](https://github.com/cavearr/toolchain-openxc7-releases/releases) 与该版本指定的 OSS CAD Suite。在 VS Code 设置中，将 `verilogWorkbench.fpgaToolchainPath` 和 `verilogWorkbench.fpgaYosysPath` 分别指向两个解压目录的根目录。Windows 使用 OSS CAD Suite 内的 Python。此流程使用工具包内已生成的器件数据库。
