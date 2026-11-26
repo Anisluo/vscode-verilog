@@ -5,7 +5,8 @@ import { workbench } from '../vscode/src/web-platform';
 import './style.css';
 import { compile, radixShort } from './design';
 import type { Design, Logic, Part, Radix, Scope, Signal, Vector } from './design';
-import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, TargetPlatform } from './protocol';
+import { testbenchSimulatorLabels } from './protocol';
+import type { TestbenchSimulator, BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, TargetPlatform } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
 import type { Palette } from './schematic';
 import type { Frame, Request } from './sim-worker';
@@ -957,9 +958,10 @@ function nextTracePoint(clockOnly: boolean) {
   seek(next);
 }
 
-function loadTestbench(result?: TestbenchResult) {
-  if (!result) { status('正在运行 Icarus Verilog…'); return; }
-  el('log').textContent = result.diagram ? `[Icarus Testbench]
+function loadTestbench(result?: TestbenchResult, simulator: TestbenchSimulator = 'icarus') {
+  const label = testbenchSimulatorLabels[result?.simulator ?? simulator];
+  if (!result) { status('正在运行 ' + label + '…'); return; }
+  el('log').textContent = result.diagram ? `[${label} Testbench]
 ${result.log}
 
 [RTL Synthesis]
@@ -981,7 +983,7 @@ ${result.diagram.log}` : result.log;
   cursor = viewStart = 0;
   const rootDepth = Math.min(...trace.signals.map(signal => signal.name.split('.').length));
   watched = new Set(trace.signals.filter(signal => signal.name.split('.').length === rootDepth).slice(0, 16).map(signal => signal.id));
-  el('net-status').textContent = 'Icarus Verilog · VCD';
+  el('net-status').textContent = label + ' · VCD';
   selectWorkbenchTab(button('view-wave'));
   draw();
   status(`Testbench 运行完成 · ${trace.signals.length} 个信号`);

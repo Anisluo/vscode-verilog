@@ -1,5 +1,5 @@
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, SynthesisStage, TargetPlatform } from '../../src/protocol';
+import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, SynthesisStage, TargetPlatform, TestbenchSimulator } from '../../src/protocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -19,12 +19,12 @@ let sequence = 0;
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; progress?: (stage: SynthesisStage) => void }>();
 type SourceUpdate = (sources: Pick<Source, 'id' | 'name'>[], platform?: TargetPlatform) => void;
 let update: SourceUpdate | undefined;
-let testbenchUpdate: ((result?: TestbenchResult) => void) | undefined;
+let testbenchUpdate: ((result?: TestbenchResult, simulator?: TestbenchSimulator) => void) | undefined;
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'sources') {
     update?.(data.sources, data.platform);
   } else if (data.type === 'testbench') {
-    testbenchUpdate?.(data.result);
+    testbenchUpdate?.(data.result, data.simulator);
   } else if (data.type === 'synthesis-stage') {
     pending.get(data.id)?.progress?.(data.stage);
   } else if (data.type === 'reply') {
@@ -58,7 +58,7 @@ export const workbench = {
   jtag: (program: boolean) => ask<{ ok: boolean; log: string }>(program ? 'jtag-program' : 'jtag-detect'),
   elkWorkerUrl: workerUrls[2],
   worker: (name: 'layout-worker' | 'sim-worker') => new Worker(workerUrls[workerNames.indexOf(name)]),
-  connect: (listener: SourceUpdate, onTestbench: (result?: TestbenchResult) => void) => {
+  connect: (listener: SourceUpdate, onTestbench: (result?: TestbenchResult, simulator?: TestbenchSimulator) => void) => {
     update = listener;
     testbenchUpdate = onTestbench;
     api.postMessage({ type: 'ready' });

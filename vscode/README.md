@@ -11,7 +11,11 @@
 
 ### FIFO 自动仿真
 
-在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，用 Icarus Verilog 执行行为仿真，并显示波形。切换到「电路图」可查看 DUT 方块、外部时钟与输入输出信号的连线，双击方块进入内部 RTL，点上方的 DUT 可返回。已记录的信号值随仿真光标更新。编译命令与 `PASS` 输出位于「诊断与日志」。如果命令找不到模拟器，在 `verilogWorkbench.icarusPath` 填入包含 `iverilog` 和 `vvp` 的目录。
+在 VS Code 中打开 `fifo_4x8.v` 或 `fifo_4x8_tb.v`，执行 **Verilog: 运行 Testbench**。扩展会识别同目录配对的 DUT 和 testbench，选择 **Icarus Verilog** 或 **Verilator** 执行行为仿真，并显示波形。切换到「电路图」可查看 DUT 方块、外部时钟与输入输出信号的连线，双击方块进入内部 RTL，点上方的 DUT 可返回。已记录的信号值随仿真光标更新。编译命令与 `PASS` 输出位于「诊断与日志」。
+
+Verilator 需要 Verilator 5.x、支持协程的 C++ 编译器和 make。Windows 默认调用 WSL（例如 Debian 中安装 `verilator g++ make`），可通过 `verilogWorkbench.verilatorWslDistro` 选择发行版。也可用 `verilogWorkbench.verilatorExecutable` 指定已配置好的本机工具。Verilator 主要采用两态仿真，涉及 X/Z 的检查请选 Icarus Verilog。
+
+如果命令找不到 Icarus Verilog，在 `verilogWorkbench.icarusPath` 填入包含 `iverilog` 和 `vvp` 的目录。
 
 其他项目可使用 `模块名_tb.v` 或 `tb_模块名.v` 命名，`.sv` 同样适用。额外设计文件使用 `verilogWorkbench.additionalSources`，顶层模块名与文件名不同时可设置 `verilogWorkbench.testbenchTop`。Testbench 需使用 `$dumpfile` 和 `$dumpvars` 在仿真目录生成一个 VCD。
 

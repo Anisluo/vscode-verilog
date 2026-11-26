@@ -5,6 +5,9 @@ export interface Source {
   text: string;
 }
 
+export const testbenchSimulatorLabels = { icarus: 'Icarus Verilog', verilator: 'Verilator' } as const;
+export type TestbenchSimulator = keyof typeof testbenchSimulatorLabels;
+
 export type TargetPlatform = 'asic' | 'fpga';
 
 export type SynthesisStage = 'synthesis' | 'netlist' | 'sta' | 'place-route' | 'bitstream';

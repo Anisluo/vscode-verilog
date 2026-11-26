@@ -10,7 +10,8 @@ import type { FpgaOptions } from '../../src/fpga';
 import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
+import { testbenchSimulatorLabels } from '../../src/protocol';
+import type { TestbenchSimulator, BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
 
 const inputFile = /\.(v|sv)$/i;
 const hdlFile = /\.(v|sv|vh|svh)$/i;
@@ -128,6 +129,12 @@ export function activate(context: vscode.ExtensionContext) {
       }
       bench = found;
     }
+    const choices = (Object.keys(testbenchSimulatorLabels) as TestbenchSimulator[]).map(simulator => ({
+      simulator, label: testbenchSimulatorLabels[simulator],
+    }));
+    const choice = await vscode.window.showQuickPick(choices, { title: '选择 Testbench 仿真器' });
+    if (!choice) return;
+    const { simulator, label } = choice;
     const config = vscode.workspace.getConfiguration('verilogWorkbench', bench);
     const folder = vscode.workspace.getWorkspaceFolder(bench)?.uri.fsPath ?? dirname(bench.fsPath);
     const additional = isBundled(bench) ? [] : config.get<string[]>('additionalSources', []);
@@ -135,15 +142,17 @@ export function activate(context: vscode.ExtensionContext) {
       .map(uri => [uri.toString(), uri])).values()];
     const top = config.get<string>('testbenchTop', '').trim() || basename(bench.fsPath).replace(/\.[^.]+$/, '');
     const root = config.get<string>('icarusPath', '').trim();
+    const verilatorExecutable = config.get<string>('verilatorExecutable', '').trim();
+    const verilatorWslDistro = config.get<string>('verilatorWslDistro', '').trim();
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(bench), { viewColumn: vscode.ViewColumn.One });
-    const target = vscode.window.createWebviewPanel('verilogTestbench', 'Testbench · ' + top,
+    const target = vscode.window.createWebviewPanel('verilogTestbench', 'Testbench · ' + top + ' · ' + label,
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       { enableScripts: true, localResourceRoots: [assets], retainContextWhenHidden: true });
     let loaded = false;
     let disposed = false;
     let result: TestbenchResult | undefined;
     const send = () => {
-      if (loaded && !disposed) void target.webview.postMessage({ type: 'testbench', result });
+      if (loaded && !disposed) void target.webview.postMessage({ type: 'testbench', simulator, result });
     };
     const receiver = target.webview.onDidReceiveMessage(message => {
       if (message.type === 'ready') { loaded = true; send(); }
@@ -156,13 +165,15 @@ export function activate(context: vscode.ExtensionContext) {
         const document = await vscode.workspace.openTextDocument(uri);
         return { id: uri.toString(), name: basename(uri.fsPath), path: uri.fsPath, text: document.getText() };
       }));
-      const bin = root ? resolve(folder, root) : await bundled(join('icarus', 'bin'), ['iverilog.exe', 'vvp.exe']);
+      const simulationOptions = simulator === 'verilator'
+        ? { simulator, executable: verilatorExecutable || undefined, wslDistro: verilatorWslDistro || undefined } as const
+        : { simulator, bin: root ? resolve(folder, root) : await bundled(join('icarus', 'bin'), ['iverilog.exe', 'vvp.exe']) } as const;
       const hdlRoot = config.get<string>('toolchainPath', '').trim();
       const hdl = hdlRoot ? resolve(folder, hdlRoot)
         : await bundled('hdl', [join('bin', 'yosys.exe'), join('bin', 'slang.exe')]);
       const designSources = snapshot.filter(source => source.id !== bench.toString());
       const [simulation, diagram] = await Promise.all([
-        runTestbench(snapshot, top, bin),
+        runTestbench(snapshot, top, simulationOptions),
         designSources.some(source => inputFile.test(source.name))
           ? hdlJob(designSources, {
             standard: '1800-2023', top: '', mode: 'rtl', hierarchy: true, optimize: true,
@@ -171,7 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
       ]);
       result = { ...simulation, diagram };
     } catch (error) {
-      result = { log: String(error) };
+      result = { simulator, log: String(error) };
     }
     send();
   }));
