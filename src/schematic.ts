@@ -141,33 +141,58 @@ export class Schematic {
   constructor(private host: HTMLElement, private onPart: (part: Part) => void, private onWire: WireMenu,
     private createLayoutWorker: () => Worker, private elkWorkerUrl: string, private doubleClickModules = false) {
     new ResizeObserver(() => this.resize()).observe(host);
+    let drag: {
+      first: Point; delta: Point; drawing: SVGSVGElement; id: number; active: boolean;
+    } | undefined;
+    let panFrame = 0;
+    let suppressClick = false;
+    const stopDrag = (event?: PointerEvent) => {
+      if (!drag || (event && event.pointerId !== drag.id)) return;
+      const current = drag;
+      drag = undefined;
+      if (panFrame) cancelAnimationFrame(panFrame);
+      panFrame = 0;
+      if (!current.active) return;
+      if (this.drawing === current.drawing) {
+        this.shift = { x: this.shift.x + current.delta.x, y: this.shift.y + current.delta.y };
+        this.resize();
+      }
+      current.drawing.style.removeProperty('transform');
+      host.classList.remove('panning');
+    };
     host.addEventListener('wheel', event => {
       if (!this.drawing || event.deltaY === 0) return;
       event.preventDefault();
+      stopDrag();
       const { left, top } = host.getBoundingClientRect();
       this.scale(event.deltaY < 0 ? 1.15 : 1 / 1.15, { x: event.clientX - left, y: event.clientY - top });
     }, { passive: false });
-    let drag: { first: Point; shift: Point; id: number; active: boolean } | undefined;
-    let suppressClick = false;
     host.addEventListener('pointerdown', event => {
-      if (event.button !== 0 || !this.drawing) return;
+      if (event.button !== 0 || !this.drawing || drag) return;
       suppressClick = false;
-      drag = { first: { x: event.clientX, y: event.clientY }, shift: { ...this.shift }, id: event.pointerId, active: false };
+      drag = { first: { x: event.clientX, y: event.clientY }, delta: { x: 0, y: 0 },
+        drawing: this.drawing, id: event.pointerId, active: false };
     });
     host.addEventListener('pointermove', event => {
       if (!drag || event.pointerId !== drag.id || !(event.buttons & 1)) return;
-      const dx = event.clientX - drag.first.x;
-      const dy = event.clientY - drag.first.y;
-      if (!drag.active && Math.hypot(dx, dy) < 4) return;
-      if (!drag.active) host.setPointerCapture(event.pointerId);
-      drag.active = true;
-      this.manualView = true;
-      suppressClick = true;
-      host.classList.add('panning');
-      this.shift = { x: drag.shift.x + dx, y: drag.shift.y + dy };
-      this.resize();
+      if (drag.drawing !== this.drawing) { stopDrag(); return; }
+      const x = event.clientX - drag.first.x;
+      const y = event.clientY - drag.first.y;
+      if (!drag.active) {
+        if (Math.hypot(x, y) < 4) return;
+        host.setPointerCapture(event.pointerId);
+        drag.active = true;
+        this.manualView = true;
+        suppressClick = true;
+        host.classList.add('panning');
+      }
+      drag.delta = { x, y };
+      if (!panFrame) panFrame = requestAnimationFrame(() => {
+        panFrame = 0;
+        // Pan the existing SVG layer. Apply the final distance to the viewBox on release.
+        if (drag?.active) drag.drawing.style.transform = `translate3d(${drag.delta.x}px, ${drag.delta.y}px, 0)`;
+      });
     });
-    const stopDrag = () => { drag = undefined; host.classList.remove('panning'); };
     host.addEventListener('pointerup', stopDrag);
     host.addEventListener('pointercancel', stopDrag);
     host.addEventListener('lostpointercapture', stopDrag);

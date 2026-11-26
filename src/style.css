@@ -85,7 +85,8 @@ main { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8
 #scope-path { grid-area: path; justify-self: center; max-width: 100%; display: flex; gap: 4px; align-items: center; overflow-x: auto; white-space: nowrap; color: var(--muted); }
 #scope-path > :only-child { overflow: hidden; text-overflow: ellipsis; }
 #schematic { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; cursor: grab; background-size: 16px 16px; }
-#schematic.panning, #schematic.panning * { cursor: grabbing; }
+#schematic.panning { cursor: grabbing; }
+#schematic.panning > svg { pointer-events: none; will-change: transform; }
 #schematic svg { position: absolute; inset: 0 auto auto 0; display: block; overflow: visible; user-select: none; }
 .empty { min-height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 18px; }
 .schematic-wire, .symbol-pin { fill: none; stroke-linecap: butt; }
