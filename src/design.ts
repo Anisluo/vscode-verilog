@@ -39,6 +39,12 @@ export interface Scope {
   parts: Part[];
   signalIds: string[];
 }
+export interface ScopeView {
+  scope: Scope;
+  signals: Signal[];
+  bitCount: number;
+}
+
 export interface Design {
   root: string;
   scopes: Scope[];
@@ -53,7 +59,7 @@ const signalId = (path: string[]) => JSON.stringify(path);
 const clockName = /^(clk|clock)(?:$|[_0-9])|(?:^|_)(clk|clock)$/i;
 const visible = (name: string, hidden?: number) => !hidden && !name.startsWith('$');
 
-export function compile(netlist: Netlist, top: string, source?: Netlist): Design {
+export function compile(netlist: Netlist, top: string, source?: Netlist, scopeId?: string): Design {
   const scopes: Scope[] = [];
   const signals = new Map<string, Signal>();
   const cells: Part[] = [];
@@ -126,6 +132,7 @@ export function compile(netlist: Netlist, top: string, source?: Netlist): Design
       const id = signalId([...path, name]);
       if (!visible(name, net.hide_name) || signals.has(id)) continue;
       signals.set(id, { id, name: [...path.slice(1), name].join('.'), width: net.bits.length, editable: false, clock: false, signed: !!net.signed });
+      scope.signalIds.push(id);
     }
     for (const [name, cell] of Object.entries(mod.cells)) {
       const childModule = netlist.modules[cell.type];
@@ -137,17 +144,31 @@ export function compile(netlist: Netlist, top: string, source?: Netlist): Design
       if (childModule && !/1$/.test(childModule.attributes?.blackbox ?? '')) {
         const childPath = [...path, name];
         part.child = signalId(childPath);
-        visit(cell.type, childPath, [...ancestry, moduleName], Object.fromEntries(pins.map(pin => [pin.name, pin.bits])));
+        if (scopeId === undefined) visit(cell.type, childPath, [...ancestry, moduleName], Object.fromEntries(pins.map(pin => [pin.name, pin.bits])));
       } else cells.push(part);
     }
   }
-  visit(top, [top], []);
+  const path = scopeId === undefined ? [top] : JSON.parse(scopeId) as string[];
+  let moduleName = top;
+  if (!Array.isArray(path) || path[0] !== top) throw new Error('未知的电路图层级。');
+  for (const name of path.slice(1)) {
+    const child = netlist.modules[moduleName]?.cells[name];
+    const target = child && netlist.modules[child.type];
+    if (!target || /1$/.test(target.attributes?.blackbox ?? '')) throw new Error('该模块没有可展开的电路图。');
+    moduleName = child.type;
+  }
+  visit(moduleName, path, []);
   const canonical = (bits: Bit[]) => bits.map(bit => typeof bit === 'number' ? find(bit) : bit);
   for (const scope of scopes) for (const part of scope.parts) for (const pin of part.pins) pin.bits = canonical(pin.bits);
   for (const signal of signals.values()) if (signal.bits) signal.bits = canonical(signal.bits);
   for (const constant of constants) constant.bit = find(constant.bit);
   // Initialization attributes belong to the resolved net even when it is aliased.
   return { root: scopes[0].id, scopes, signals: [...signals.values()], cells, constants, initial: new Map([...initial].map(([bit, value]) => [find(bit), value])), bitCount: parents.length };
+}
+
+export function compileScope(netlist: Netlist, top: string, scopeId = signalId([top]), source?: Netlist): ScopeView {
+  const { scopes: [scope], signals, bitCount } = compile(netlist, top, source, scopeId);
+  return { scope, signals, bitCount };
 }
 
 export type Radix = 'bin' | 'hex' | 'uint' | 'int' | 'real';

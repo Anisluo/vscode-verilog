@@ -56,7 +56,7 @@ export function makeCell(part: Part): Evaluation {
   const reduce = (op: (a: Logic, b: Logic) => Logic, start: Logic, negate = false) =>
     y(read => extend([negate ? inv(read('A').reduce(op, start)) : read('A').reduce(op, start)], w));
   switch (type) {
-    case '$pos': case '$_BUF_': return unary(bit => bit);
+    case '$pos': case '$buf': case '$_BUF_': return unary(bit => bit);
     case '$not': case '$_NOT_': return unary(inv);
     case '$and': case '$_AND_': return binary(and);
     case '$or': case '$_OR_': return binary(or);

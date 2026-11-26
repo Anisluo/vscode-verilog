@@ -80,6 +80,7 @@ export interface FpgaCriticalPath {
 }
 
 export interface BuildResult {
+  schematic?: { id: number; root: import('./design').ScopeView };
   fpgaCriticalPaths?: FpgaCriticalPath[];
   fpgaTiming?: FpgaClockTiming;
   timingReport?: string;

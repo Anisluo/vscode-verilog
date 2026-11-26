@@ -9,7 +9,7 @@ export interface View {
   watched: Pick<Signal, 'id' | 'bits'>[];
 }
 type Mutation =
-  | { type: 'load'; design: Design; timing: Timing }
+  | { type: 'load'; design: Design; timing: Timing; delays?: Record<string, number> }
   | { type: 'edit'; id: string; time: number; value: Vector; duration: Duration }
   | { type: 'delay'; cell: string; delay: number }
   | { type: 'delays'; values: Record<string, number> }
@@ -87,6 +87,7 @@ worker.onmessage = ({ data }: MessageEvent<Request>) => {
         simulation = undefined;
         simulation = new Simulation(command.design, command.timing);
         if (previous?.design.root === command.design.root) simulation.reuseInputs(previous);
+        if (command.delays && Object.keys(command.delays).length) simulation.setDelays(command.delays);
         break;
       }
       case 'edit': simulation?.edit(command.id, command.time, command.value, command.duration); break;

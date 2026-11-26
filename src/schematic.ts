@@ -118,6 +118,7 @@ export class Schematic {
   private drawing?: SVGSVGElement;
   private view = { width: 1, height: 1 };
   private layout?: Worker;
+  private readonly layoutCache = new WeakMap<Scope, { widths: string; result: Exclude<LayoutResult, { error: string }> }>();
   private cancelLayout?: () => void;
   private zoom = 1;
   private manualView = false;
@@ -216,11 +217,13 @@ export class Schematic {
       })) }
       : diagramConnections(scope, signals);
     const { nodes, elkNodes, edges, ends } = layoutNodes(parts, nets, this.portWidths);
-    const layout = this.createLayoutWorker();
+    const widths = JSON.stringify([...this.portWidths]);
+    const cached = this.layoutCache.get(scope);
+    const layout = cached?.widths === widths ? undefined : this.createLayoutWorker();
     this.layout = layout;
     return new Promise<boolean>(resolve => {
       const done = (success: boolean) => {
-        layout.terminate();
+        layout?.terminate();
         this.layout = undefined;
         this.cancelLayout = undefined;
         clearTimeout(timeout);
@@ -234,8 +237,7 @@ export class Schematic {
         this.host.replaceChildren(placeholder);
       };
       const timeout = setTimeout(() => fail('布局超过 45 秒。'), 45_000);
-      layout.onerror = event => { if (this.layout === layout) fail(event.message); };
-      layout.onmessage = ({ data }: MessageEvent<LayoutResult>) => {
+      const paint = (data: LayoutResult) => {
         if (this.layout !== layout) return;
         if ('error' in data) { fail(data.error); return; }
         try {
@@ -273,11 +275,19 @@ export class Schematic {
           this.update(this.lastValues, this.palette, this.radixFor, this.highlights);
           this.setCriticalPath(this.critical);
           this.highlightSignal(this.selectedSignal);
+          this.layoutCache.set(scope, { widths, result: data });
           done(true);
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
       };
+      if (!layout && cached) {
+        paint(cached.result);
+        return;
+      }
+      if (!layout) return;
+      layout.onerror = event => { if (this.layout === layout) fail(event.message); };
+      layout.onmessage = ({ data }: MessageEvent<LayoutResult>) => paint(data);
       layout.postMessage({ elkWorkerUrl: this.elkWorkerUrl, boxes: nodes.map(node => node.box), kinds: nodes.map(node => node.kind), nodes: elkNodes, edges, groups: ends } satisfies LayoutRequest);
     });
   }

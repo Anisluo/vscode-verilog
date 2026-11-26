@@ -7,7 +7,7 @@ import { hdlJob } from '../src/backend';
 import { parseVcd, changeAt } from '../src/vcd';
 import { runTestbench } from '../src/testbench';
 import { nearestWaveEdge } from '../src/wave';
-import { compile, formatValue, parseValue } from '../src/design';
+import { compile, compileScope, formatValue, parseValue } from '../src/design';
 import { Simulation } from '../src/simulation';
 import { makeCell } from '../src/cells';
 import type { Scope, Vector } from '../src/design';
@@ -18,7 +18,7 @@ import type { Route, Terminal } from '../src/routing';
 import { defaultDelay } from '../src/simulation';
 import { criticalPath } from '../src/critical-path';
 import { routeBranch } from '../src/routing';
-import type { BuildOptions, Source } from '../src/protocol';
+import type { BuildOptions, Netlist, Source } from '../src/protocol';
 
 const options: BuildOptions = {
   standard: '1800-2023', top: 'top', mode: 'rtl', optimize: true,
@@ -30,6 +30,38 @@ async function test(name: string, fn: () => unknown | Promise<unknown>) {
   await fn();
   console.log('OK', name);
 }
+
+await test('schematic requests compile one scope and retain instance paths and connectivity', () => {
+  const leaf = { ports: { i: { direction: 'input' as const, bits: [2] } }, netnames: {}, cells: {} };
+  const instance = (type: string, bit: number) => ({
+    type, parameters: {}, connections: { i: [bit] }, port_directions: { i: 'input' as const },
+  });
+  const netlist: Netlist = { modules: {
+    top: { ...leaf, cells: { left: instance('branch', 2), right: instance('branch', 2), opaque: instance('opaque', 2) } },
+    branch: { ...leaf, cells: { child: instance('leaf', 2) } },
+    leaf,
+    opaque: { ...leaf, attributes: { blackbox: '1' } },
+  } };
+  const root = compileScope(netlist, 'top');
+  assert.equal(root.scope.parts.length, 4);
+  assert.equal(root.signals.length, 1);
+  assert.equal(root.scope.parts.find(p => p.name === 'opaque')?.child, undefined);
+  const left = compileScope(netlist, 'top', root.scope.parts.find(p => p.name === 'left')!.child);
+  const right = compileScope(netlist, 'top', root.scope.parts.find(p => p.name === 'right')!.child);
+  assert.equal(left.scope.parts.length, 2);
+  assert.equal(left.scope.parts[0].pins[0].bits[0], left.scope.parts[1].pins[0].bits[0]);
+  assert.notEqual(left.scope.parts[1].child, right.scope.parts[1].child);
+  assert.throws(() => compileScope(netlist, 'top', '["top","opaque"]'), /可展开/);
+  assert.equal(compile(netlist, 'top').scopes.length, 5);
+});
+
+await test('word-level $buf propagates four-state bus values', () => {
+  const evaluate = makeCell({ id: 'buf', name: 'buf', type: '$buf', pins: [
+    { name: 'A', direction: 'input', bits: [0, 1, 2, 3] },
+    { name: 'Y', direction: 'output', bits: [4, 5, 6, 7] },
+  ] });
+  assert.deepEqual(evaluate(() => ['0', '1', 'x', 'z'], {}).Y, ['0', '1', 'x', 'z']);
+});
 
 await test('radices and four-state vector input', () => {
   assert.deepEqual(parseValue('-2', 4, 'int'), ['0', '1', '1', '1']);

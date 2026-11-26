@@ -4,7 +4,7 @@ import type { TestbenchResult } from './testbench';
 import { workbench } from '../vscode/src/web-platform';
 import './style.css';
 import { compile, radixShort } from './design';
-import type { Design, Logic, Part, Radix, Scope, Signal, Vector } from './design';
+import type { Design, Logic, Part, Radix, Scope, ScopeView, Signal, Vector } from './design';
 import { testbenchSimulatorLabels } from './protocol';
 import type { TestbenchSimulator, BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, TargetPlatform } from './protocol';
 import { Schematic, defaultPalette } from './schematic';
@@ -53,6 +53,12 @@ function disableBuildButtons(disabled: boolean) {
 let synthesisQueued = false;
 let logMode: 'lint' | 'synth' = 'lint';
 let design: Design | undefined;
+let schematicBuild: { id: number; root: string } | undefined;
+const loadedScopes = new Map<string, ScopeView>();
+let scopeNavigation = 0;
+let fullDesign: Promise<Design> | undefined;
+let fullDesignInstalled = false;
+let simulationStarting = false;
 let trace: WaveTrace | undefined;
 const testbenchView = document.body.classList.contains('testbench-view');
 let scopes: string[] = [];
@@ -71,7 +77,7 @@ function themedPalette(): Palette {
 const cellDelays = new Map<string, number>();
 let palette = themedPalette();
 
-const worker = workbench.worker('sim-worker');
+let worker: Worker | undefined;
 let version = 0;
 let frame: Frame | undefined;
 let pendingFrame: Frame | undefined;
@@ -100,7 +106,7 @@ const schematic = new Schematic(
   (signal, x, y, aliases) => signalMenu(signal, x, y, aliases),
   () => workbench.worker('layout-worker'),
   workbench.elkWorkerUrl,
-  testbenchView,
+  true,
 );
 const waveform = new Waveform(el('wave'), el('wave-scroll'), handleWave, zoomWave,
   (start, finish) => setView(start, finish - start), setView, openRadixMenu, signal => {
@@ -312,13 +318,23 @@ async function synthesize() {
     if (started !== revision) { status('综合期间源码或设置已修改，请重新综合。'); return; }
     el('log').textContent = result.log;
     if (result.diagnostics.length) applyDiagnostics(result.diagnostics);
-    if (!result.ok || !result.netlist || !result.top) {
+    if (!result.ok || !result.schematic || !result.top) {
       selectWorkbenchTab(button('view-log'));
       status('综合失败，请查看诊断与日志。', true);
       return;
     }
     progress.update('正在构建电路模型…');
-    const nextDesign = compile(result.netlist, result.top, result.sourceNetlist);
+    const { id, root } = result.schematic;
+    ++scopeNavigation;
+    worker?.terminate();
+    worker = undefined;
+    fullDesign = undefined;
+    fullDesignInstalled = false;
+    button('critical-path').setAttribute('aria-pressed', 'false');
+    schematicBuild = { id, root: root.scope.id };
+    loadedScopes.clear();
+    loadedScopes.set(root.scope.id, root);
+    const nextDesign = scopeDesign(root);
     const sameTop = nextDesign.root === design?.root && !simulationError;
     stop();
     design = nextDesign;
@@ -346,10 +362,9 @@ async function synthesize() {
     refreshCriticalPath();
     renderInspector();
     draw();
-    request({ type: 'load', design, timing: simTiming() });
     if (started !== revision) status('源码或设置已变更，请重新综合。');
     else if (!laidOut) status('网表已生成，电路图布局未完成。', true);
-    else status(`综合完成 · ${design.cells.length} 个元件`);
+    else status(`综合完成 · 顶层 ${root.scope.parts.length} 个节点`);
   } catch (error) {
     if (synthesisQueued) return;
     selectWorkbenchTab(button('view-log'));
@@ -686,8 +701,10 @@ function selectSignal(signal: Signal, control: HTMLButtonElement) {
 function renderInspector() {
   const filter = input('signal-filter').value.trim().toLowerCase();
   const overview = inDutOverview();
+  const activeScope = overview ? dutOverview : !testbenchView ? design?.scopes.find(scope => scope.id === scopes.at(-1)) : undefined;
+  const activeSignals = activeScope && new Set(activeScope.signalIds);
   const signals = (design?.signals ?? []).filter(signal =>
-    (!overview || dutOverview!.signalIds.includes(signal.id)) && signal.name.toLowerCase().includes(filter));
+    (!activeSignals || activeSignals.has(signal.id)) && signal.name.toLowerCase().includes(filter));
   if (overview) inspector = 'signals';
   button('show-parts').hidden = overview;
   const partCounts = new Map<string, number>();
@@ -769,6 +786,76 @@ function renderInspector() {
   }));
 }
 
+function scopeDesign(view: ScopeView): Design {
+  return {
+    root: schematicBuild?.root ?? view.scope.id,
+    scopes: [view.scope], signals: view.signals,
+    cells: view.scope.parts.filter(part => !part.signal && !part.child),
+    constants: [], initial: new Map(), bitCount: view.bitCount,
+  };
+}
+
+async function navigateScope(path: string[]) {
+  const build = schematicBuild;
+  const id = path.at(-1);
+  const navigation = ++scopeNavigation;
+  if (build && id && !fullDesignInstalled) {
+    try {
+      const view = loadedScopes.get(id) ?? await workbench.scope(build.id, id);
+      if (build !== schematicBuild || navigation !== scopeNavigation) return;
+      loadedScopes.set(id, view);
+      if (!fullDesignInstalled) design = scopeDesign(view);
+    } catch (error) {
+      if (build === schematicBuild && navigation === scopeNavigation) status(String(error), true);
+      return;
+    }
+  }
+  scopes = path;
+  schematic.highlightSignal(design?.signals.find(signal => signal.id === selectedSignalId));
+  void showScope();
+}
+
+async function installFullDesign(build: NonNullable<typeof schematicBuild>) {
+  if (fullDesignInstalled) return;
+  const pending = fullDesign ??= workbench.simulation(build.id).then(result => {
+    if (!result.netlist || !result.top) throw new Error('综合结果缺少仿真网表。');
+    return compile(result.netlist, result.top, result.sourceNetlist);
+  });
+  try {
+    const complete = await pending;
+    if (build !== schematicBuild || fullDesignInstalled) return;
+    design = complete;
+    fullDesignInstalled = true;
+    frame = undefined;
+    schematic.highlightSignal(design.signals.find(signal => signal.id === selectedSignalId));
+    void showScope();
+  } catch (error) {
+    if (fullDesign === pending) fullDesign = undefined;
+    throw error;
+  }
+}
+
+async function startDiagramSimulation() {
+  const build = schematicBuild;
+  if (!build || worker || simulationStarting || buildRevision !== revision) return;
+  simulationStarting = true;
+  draw();
+  status('正在加载仿真模型…');
+  try {
+    await installFullDesign(build);
+    if (build !== schematicBuild || buildRevision !== revision || !design) return;
+    worker = workbench.worker('sim-worker');
+    bindWorker(worker);
+    request({ type: 'load', design, timing: simTiming(), delays: Object.fromEntries(cellDelays) });
+    status('正在计算仿真…');
+  } catch (error) {
+    if (build === schematicBuild) status(String(error), true);
+  } finally {
+    simulationStarting = false;
+    draw();
+  }
+}
+
 function showScope(keepPrevious = false) {
   if (!design) return;
   renderInspector();
@@ -777,7 +864,7 @@ function showScope(keepPrevious = false) {
     element.textContent = id === dutOverview?.id ? 'DUT' : (JSON.parse(id) as string[]).at(-1)!;
     if (id === dutOverview?.id && inDutOverview()) element.textContent += ' · 双击模块查看 RTL';
     element.title = element.textContent;
-    if (element instanceof HTMLButtonElement) element.onclick = () => { scopes = scopes.slice(0, index + 1); showScope(); };
+    if (element instanceof HTMLButtonElement) element.onclick = () => { void navigateScope(scopes.slice(0, index + 1)); };
     return element;
   }));
   const scope = inDutOverview() ? dutOverview! : design.scopes.find(item => item.id === scopes.at(-1))!;
@@ -809,7 +896,7 @@ function refreshCriticalPath() {
   }
 }
 
-function bindWorker() {
+function bindWorker(worker: Worker) {
   worker.onmessage = ({ data }: MessageEvent<Frame>) => {
     if (data.version !== version) return;
     pendingFrame = data;
@@ -820,6 +907,7 @@ function bindWorker() {
       frame = pendingFrame;
       pendingFrame = undefined;
       if (frame.error) { stop(); simulationError = frame.error; status(frame.error, true); }
+      else if (!simulationError && frame.computed >= cursor) status('仿真已启动。');
       draw();
     });
   };
@@ -831,7 +919,7 @@ function bindWorker() {
 }
 
 function request(mutation?: Request['mutation']) {
-  if (!design || testbenchView) return;
+  if (!design || testbenchView || !worker) return;
   const data: Request = { version: ++version, mutation, view: {
     cursor, start: viewStart, end: viewEnd(), watched: watchedSignals().map(({ id, bits }) => ({ id, bits })),
   } };
@@ -996,9 +1084,11 @@ function draw() {
   schematic.update(values, palette, radixFor, chipType);
   if (testbenchView) waveform.update({ signals, start: viewStart, end: viewEnd(), cursor: displayCursor, stepPs, frame: displayFrame, palette, radixFor });
   el('time-readout').textContent = `${nsAt(displayCursor)} / ${nsAt(end)} ns`;
-  el('preview').textContent = trace ? `VCD · ${nsAt(trace.end)} ns` : !design ? '' : simulationError ? '仿真不可用' : (frame?.computed ?? -1) < viewEnd()
+  el('preview').textContent = trace ? `VCD · ${nsAt(trace.end)} ns` : !design || (!trace && !worker) ? '' : simulationError ? '仿真不可用' : (frame?.computed ?? -1) < viewEnd()
     ? `预览计算中 · ${Math.max(0, nsAt(frame?.computed ?? 0))} ns`
     : `已计算至 ${nsAt(Math.min(end, frame!.computed))} ns`;
+  button('run-diagram-sim').hidden = testbenchView;
+  button('run-diagram-sim').disabled = !schematicBuild || !!worker || simulationStarting || buildRevision !== revision;
   button('play').disabled = !trace;
   button('rewind').disabled = !trace;
   button('step').disabled = !trace || playing || cursor >= end;
@@ -1057,7 +1147,7 @@ function toggleRun() {
 }
 
 function handlePart(part: Part) {
-  if (part.child) { scopes.push(part.child); showScope(); }
+  if (part.child) void navigateScope([...scopes, part.child]);
 }
 function handleWave(time: number, _signal?: Signal, alternate = false) {
   if (trace && !alternate && !playing) seek(time);
@@ -1082,7 +1172,6 @@ function split(id: string, variable: string, measure: (event: PointerEvent) => n
   };
 }
 
-bindWorker();
 const optionHints: Record<string, string> = {
   'mode-rtl': 'RTL 执行 proc、memory_map，可选 opt -keepdc。',
   'mode-gate': '门级执行 proc 和 synth。',
@@ -1176,11 +1265,20 @@ on('rewind', 'click', () => { stop(); seek(0); });
 on('step', 'click', () => nextTracePoint(false));
 on('cycle', 'click', () => nextTracePoint(true));
 on('play', 'click', toggleRun);
+on('run-diagram-sim', 'click', () => { void startDiagramSimulation(); });
 on('diagram-fit', 'click', () => schematic.fit());
-on('critical-path', 'click', () => {
+on('critical-path', 'click', async () => {
   const toggle = button('critical-path');
-  toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true'));
-  refreshCriticalPath();
+  const enabled = toggle.getAttribute('aria-pressed') !== 'true';
+  const build = schematicBuild;
+  try {
+    if (enabled && build) await installFullDesign(build);
+    if (build !== schematicBuild) return;
+    toggle.setAttribute('aria-pressed', String(enabled));
+    refreshCriticalPath();
+  } catch (error) {
+    status(String(error), true);
+  }
 });
 on('wave-fit', 'click', () => setView(0, end));
 document.addEventListener('keydown', event => {

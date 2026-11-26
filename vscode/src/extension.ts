@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { compileScope } from '../../src/design';
 import { hdlJob } from '../../src/backend';
 import { runJlink } from '../../src/jtag';
 import type { JtagBitstream } from '../../src/jtag';
@@ -11,7 +12,7 @@ import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
 import { testbenchSimulatorLabels } from '../../src/protocol';
-import type { TestbenchSimulator, BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
+import type { BuildResult, TestbenchSimulator, BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
 
 const inputFile = /\.(v|sv)$/i;
 const hdlFile = /\.(v|sv|vh|svh)$/i;
@@ -219,6 +220,8 @@ export function activate(context: vscode.ExtensionContext) {
       { enableScripts: true, localResourceRoots: [assets], retainContextWhenHidden: true });
     panel = target;
     ready = false;
+    let schematicBuild: { id: number; result: BuildResult } | undefined;
+    let latestSchematicRequest = 0;
     let programmedSource: vscode.TextDocument | undefined;
     let builtBitstream: JtagBitstream | undefined;
     const receiver = target.webview.onDidReceiveMessage(async message => {
@@ -239,6 +242,15 @@ export function activate(context: vscode.ExtensionContext) {
       const reply = (result: unknown, error?: string) => target === panel
         ? target.webview.postMessage({ type: 'reply', id: message.id, result, error }) : undefined;
       try {
+        if (message.type === 'schematic-scope' || message.type === 'simulation-model') {
+          const { build, scope } = message.payload as { build: number; scope?: string };
+          const current = schematicBuild?.id === build ? schematicBuild.result : undefined;
+          if (!current?.netlist || !current.top) throw new Error('综合结果已失效，请重新综合。');
+          await reply(message.type === 'schematic-scope'
+            ? compileScope(current.netlist, current.top, scope, current.sourceNetlist)
+            : { ok: true, diagnostics: [], log: '', top: current.top, netlist: current.netlist, sourceNetlist: current.sourceNetlist });
+          return;
+        }
         if (message.type === 'target-platform') {
           const platform = message.payload as TargetPlatform;
           if (platform !== 'asic' && platform !== 'fpga') throw new Error('未知目标平台。');
@@ -267,6 +279,7 @@ export function activate(context: vscode.ExtensionContext) {
           const document = primary;
           const version = ++diagnosticVersion;
           const { options, lint } = message.payload as { options: BuildOptions; lint?: boolean };
+          if (message.type === 'hdl' && !lint) latestSchematicRequest = message.id;
           const config = configuration();
           const root = config.get<string>('toolchainPath', '').trim();
           const folder = document && (vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? dirname(document.fileName));
@@ -369,6 +382,13 @@ export function activate(context: vscode.ExtensionContext) {
               programmedSource = document;
             }
             await reply({ output, part: fpga.part, top: result.top, xdc: basename(fpga.constraints), log: result.log });
+          } else if (message.type === 'hdl' && !lint && result.ok && result.top && result.netlist) {
+            const { netlist, sourceNetlist, ...summary } = result;
+            const root = compileScope(netlist, result.top, undefined, sourceNetlist);
+            if (document === primary && target === panel && latestSchematicRequest === message.id) {
+              schematicBuild = { id: message.id, result };
+              await reply({ ...summary, schematic: { id: message.id, root } });
+            } else await reply({ ...summary, ok: false });
           } else await reply(result);
         }
       } catch (error) {

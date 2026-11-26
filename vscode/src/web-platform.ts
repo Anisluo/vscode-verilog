@@ -1,3 +1,4 @@
+import type { ScopeView } from '../../src/design';
 import type { TestbenchResult } from '../../src/testbench';
 import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, SynthesisStage, TargetPlatform, TestbenchSimulator } from '../../src/protocol';
 
@@ -49,6 +50,8 @@ export const workbench = {
   directory: () => ask<string | undefined>('directory'),
   hdl: (options: BuildOptions, lint: boolean, progress?: (stage: SynthesisStage) => void) =>
     ask<BuildResult>('hdl', { options, lint }, progress),
+  scope: (build: number, scope: string) => ask<ScopeView>('schematic-scope', { build, scope }),
+  simulation: (build: number) => ask<BuildResult>('simulation-model', { build }),
   sta: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
     ask<{ cancelled: true } | { cancelled?: false; ok: boolean; log: string; report?: string; top?: string; liberty: string; sdc: string; demo: boolean }>('sta', { options }, progress),
   fpgaTiming: (options: BuildOptions, progress: (stage: SynthesisStage) => void) =>
