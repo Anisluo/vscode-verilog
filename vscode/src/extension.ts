@@ -12,7 +12,7 @@ import type { TimingOptions } from '../../src/backend';
 import { runTestbench } from '../../src/testbench';
 import type { TestbenchResult } from '../../src/testbench';
 import { testbenchSimulatorLabels } from '../../src/protocol';
-import type { BuildResult, TestbenchSimulator, BuildOptions, Diagnostic, Source, TargetPlatform } from '../../src/protocol';
+import type { BuildResult, TestbenchSimulator, BuildOptions, Diagnostic, Source, TargetPlatform, WorkbenchAction } from '../../src/protocol';
 
 const inputFile = /\.(v|sv)$/i;
 const hdlFile = /\.(v|sv|vh|svh)$/i;
@@ -24,6 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
   let primary: vscode.TextDocument | undefined;
   let sources: Source[] = [];
   let ready = false;
+  let actionRequest: { source: string; action: WorkbenchAction } | undefined;
   let refreshVersion = 0;
   let diagnosticVersion = 0;
   const assets = vscode.Uri.joinPath(context.extensionUri, 'dist');
@@ -65,7 +66,9 @@ export function activate(context: vscode.ExtensionContext) {
         sources = snapshot;
         diagnostics.clear();
       }
-      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })), platform: configuration().get<TargetPlatform>('targetPlatform', 'asic') });
+      const action = actionRequest?.source === document.uri.toString() ? actionRequest.action : undefined;
+      if (action) actionRequest = undefined;
+      await target.webview.postMessage({ type: 'sources', sources: sources.map(({ id, name }) => ({ id, name })), platform: configuration().get<TargetPlatform>('targetPlatform', 'asic'), action });
     } catch (error) {
       if (target !== panel || version !== refreshVersion) return;
       sources = [];
@@ -188,11 +191,23 @@ export function activate(context: vscode.ExtensionContext) {
     send();
   }));
 
-  context.subscriptions.push(diagnostics, vscode.commands.registerCommand('verilogWorkbench.example', async () => {
+  async function runAction(action: WorkbenchAction) {
+    const document = vscode.window.activeTextEditor?.document ?? primary;
+    if (!document || !inputFile.test(document.fileName) || testbenchName.test(basename(document.fileName))) {
+      void vscode.window.showInformationMessage(action === 'sta' ? '请先打开要做时序分析的 Verilog 模块。' : '请先打开要综合的 Verilog 模块。');
+      return;
+    }
+    await vscode.commands.executeCommand(command, document.uri, action);
+  }
+
+  context.subscriptions.push(diagnostics,
+    vscode.commands.registerCommand('verilogWorkbench.synthesize', () => runAction('synthesize')),
+    vscode.commands.registerCommand('verilogWorkbench.runSta', () => runAction('sta')),
+    vscode.commands.registerCommand('verilogWorkbench.example', async () => {
     const document = await vscode.workspace.openTextDocument(example);
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
     await vscode.commands.executeCommand(command, example);
-  }), vscode.commands.registerCommand(command, async (uri?: vscode.Uri) => {
+  }), vscode.commands.registerCommand(command, async (uri?: vscode.Uri, action?: WorkbenchAction) => {
     const document = uri instanceof vscode.Uri ? await vscode.workspace.openTextDocument(uri)
       : vscode.window.activeTextEditor?.document ?? primary;
     if (!document || !inputFile.test(document.fileName)) {
@@ -209,6 +224,7 @@ export function activate(context: vscode.ExtensionContext) {
       diagnostics.clear();
     }
     primary = document;
+    actionRequest = action ? { source: document.uri.toString(), action } : undefined;
     if (panel) {
       panel.title = 'Verilog · ' + basename(document.fileName);
       panel.reveal(vscode.ViewColumn.Beside, true);
@@ -399,6 +415,7 @@ export function activate(context: vscode.ExtensionContext) {
       receiver.dispose();
       panel = undefined;
       ready = false;
+      actionRequest = undefined;
       ++refreshVersion;
       ++diagnosticVersion;
       diagnostics.clear();
@@ -426,7 +443,9 @@ function webviewHtml(webview: vscode.Webview, assets: vscode.Uri, template: stri
   const uri = (file: string) => webview.asWebviewUri(vscode.Uri.joinPath(assets, file)).toString();
   const nonce = randomBytes(18).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:`;
-  return (testbench ? template.replace('class="vscode-workbench"', 'class="vscode-workbench testbench-view"') : template)
+  const viewClass = testbench ? 'testbench-view'
+    : vscode.env.uriScheme === 'digital-design-editor' ? 'native-synthesis-menu' : '';
+  return template.replace('class="vscode-workbench"', `class="vscode-workbench ${viewClass}"`)
     .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]+/, '$1' + csp)
     .replace('href="renderer.css"', `href="${uri('renderer.css')}"`)
     .replace('<script src="renderer.js"></script>',

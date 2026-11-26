@@ -9,6 +9,7 @@ export const testbenchSimulatorLabels = { icarus: 'Icarus Verilog', verilator: '
 export type TestbenchSimulator = keyof typeof testbenchSimulatorLabels;
 
 export type TargetPlatform = 'asic' | 'fpga';
+export type WorkbenchAction = 'synthesize' | 'sta';
 
 export type SynthesisStage = 'synthesis' | 'netlist' | 'sta' | 'place-route' | 'bitstream';
 

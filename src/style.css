@@ -189,6 +189,7 @@ dialog p { margin: 0; }
 .synth-actions { display: flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 6px 16px; white-space: nowrap; }
 .target-platform { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .synth-button-group { display: flex; }
+.native-synthesis-menu #synthesize { display: none; }
 .synth-actions #synthesize { border-radius: 5px 0 0 5px; }
 .synth-actions #settings { width: 12px; border-radius: 0 5px 5px 0; border-left: 1px solid #40766d; padding-inline: 0; }
 .synth-actions #settings .button-icon { width: 8px; height: 8px; }

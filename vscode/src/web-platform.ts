@@ -1,6 +1,6 @@
 import type { ScopeView } from '../../src/design';
 import type { TestbenchResult } from '../../src/testbench';
-import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, SynthesisStage, TargetPlatform, TestbenchSimulator } from '../../src/protocol';
+import type { BuildOptions, BuildResult, Diagnostic, FpgaClockTiming, FpgaCriticalPath, Source, SynthesisStage, TargetPlatform, TestbenchSimulator, WorkbenchAction } from '../../src/protocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -18,12 +18,12 @@ const workerUrls = await Promise.all(workerNames.map(async name => {
 
 let sequence = 0;
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; progress?: (stage: SynthesisStage) => void }>();
-type SourceUpdate = (sources: Pick<Source, 'id' | 'name'>[], platform?: TargetPlatform) => void;
+type SourceUpdate = (sources: Pick<Source, 'id' | 'name'>[], platform?: TargetPlatform, action?: WorkbenchAction) => void;
 let update: SourceUpdate | undefined;
 let testbenchUpdate: ((result?: TestbenchResult, simulator?: TestbenchSimulator) => void) | undefined;
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'sources') {
-    update?.(data.sources, data.platform);
+    update?.(data.sources, data.platform, data.action);
   } else if (data.type === 'testbench') {
     testbenchUpdate?.(data.result, data.simulator);
   } else if (data.type === 'synthesis-stage') {

@@ -2,7 +2,7 @@
   "name": "verilog-workbench",
   "displayName": "Verilog Workbench",
   "description": "Synthesize Verilog and SystemVerilog, inspect schematics, and simulate four-state signals interactively.",
-  "version": "0.2.31",
+  "version": "0.2.32",
   "publisher": "verilog-workbench",
   "author": "Anisluo",
   "license": "MIT",
@@ -33,6 +33,16 @@
       {
         "command": "verilogWorkbench.open",
         "title": "打开综合工作台",
+        "category": "Verilog"
+      },
+      {
+        "command": "verilogWorkbench.synthesize",
+        "title": "Synthesis",
+        "category": "Verilog"
+      },
+      {
+        "command": "verilogWorkbench.runSta",
+        "title": "Run STA",
         "category": "Verilog"
       },
       {

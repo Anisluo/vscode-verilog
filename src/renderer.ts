@@ -1314,10 +1314,12 @@ new MutationObserver(() => {
   renderInspector();
   draw();
 }).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-workbench.connect((sources, platform) => {
+workbench.connect((sources, platform, action) => {
   if (platform) showTargetPlatform(platform);
   hostSources = sources;
   inputsChanged();
+  if (action === 'synthesize') void synthesize();
+  if (action === 'sta') void runSta();
 }, loadTestbench);
 renderPalette();
 renderInspector();
