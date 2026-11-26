@@ -39,7 +39,7 @@ function exactAliases(net: WireNet) {
   const bits = net.signal.bits!;
   return net.aliases.map(a => a.signal).filter(s => s.bits?.length === bits.length && s.bits.every((bit, i) => bit === bits[i]));
 }
-interface PanGeometry { boxes: Box[]; routes: Route[]; paths?: { nodes: Path2D; wires: Path2D } }
+interface PanGeometry { boxes: Box[]; routes: Route[]; captions: string[]; paths?: { nodes: Path2D; wires: Path2D } }
 interface Contact { part: Part; slot: Slot; point: Point }
 interface Trace { route: Route; contacts: Contact[] }
 function valueTitle(value: Logic[], radix: Radix) {
@@ -249,6 +249,24 @@ export class Schematic {
     context.stroke(geometry.paths.wires);
     context.strokeStyle = this.palette['1'];
     context.stroke(geometry.paths.nodes);
+    if (this.zoom >= .6) {
+      const left = -(this.shift.x + delta.x) / this.zoom;
+      const top = -(this.shift.y + delta.y) / this.zoom;
+      const right = left + width / this.zoom;
+      const bottom = top + height / this.zoom;
+      context.font = '12px sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = this.palette['1'];
+      geometry.boxes.forEach((box, index) => {
+        const x = px(box.x + box.width / 2);
+        const y = px(box.y + box.height / 2);
+        if (x < left || x > right || y < top || y > bottom) return;
+        const maxWidth = px(box.width) - 8;
+        if (maxWidth < 18) return;
+        context.fillText(short(geometry.captions[index], Math.max(2, Math.floor(maxWidth / 7))), x, y, maxWidth);
+      });
+    }
     return true;
   }
 
@@ -342,7 +360,7 @@ export class Schematic {
           drawing.append(labels);
           nodes.forEach((node, index) => this.drawPart(drawing, { ...node, box: data.boxes[index] }, signalById, nets));
           this.panGeometry = data.boxes.length + data.routes.length >= 250
-            ? { boxes: data.boxes, routes: data.routes } : undefined;
+            ? { boxes: data.boxes, routes: data.routes, captions: nodes.map(node => partTitle(node.part)) } : undefined;
           this.drawing = drawing;
           this.host.replaceChildren(drawing);
           const newPort = oldPosition ? nodes.findIndex(n => n.part.id === resizedPort) : -1;
