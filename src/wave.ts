@@ -129,15 +129,14 @@ export class Waveform {
     this.bindReorder(onReorder);
     new ResizeObserver(() => this.paint()).observe(host);
     host.addEventListener('scroll', () => this.paint(), { passive: true });
-    const click = (offsetX: number, offsetY: number, alternate: boolean) => {
+    const alternateClick = (offsetX: number, offsetY: number) => {
       if (!this.data) return;
       if (offsetX < labelWidth) return;
-      const time = (alternate ? undefined : this.snappedCursorTime(offsetX, offsetY)) ?? this.tick(offsetX);
+      const time = this.tick(offsetX);
       const signal = offsetY >= axisHeight ? this.signalAt(offsetY) : undefined;
-      if (offsetY < axisHeight || signal) onClick(time, signal, alternate);
+      if (offsetY < axisHeight || signal) onClick(time, signal, true);
     };
     let drag: { id: number; x: number; y: number; clientX: number; button: number; start: number; span: number; moved: boolean } | undefined;
-    let suppressClick = false;
     const point = (event: PointerEvent) => {
       const bounds = canvas.getBoundingClientRect();
       return {
@@ -147,7 +146,6 @@ export class Waveform {
     };
     canvas.addEventListener('pointerdown', event => {
       if (!event.isPrimary || (event.button !== 0 && event.button !== 2)) return;
-      suppressClick = false;
       const data = this.data;
       if (!data || !this.inPlot(event.offsetX)) return;
       drag = { id: event.pointerId, ...point(event), clientX: event.clientX, button: event.button,
@@ -190,10 +188,9 @@ export class Waveform {
         const gesture = drag;
         clearSelection(event);
         if (moved) pan(event.clientX, gesture);
-        else click(x, y, true);
+        else alternateClick(x, y);
         return;
       }
-      suppressClick = moved;
       const left = Math.min(x, drag.x);
       const right = Math.max(x, drag.x);
       clearSelection(event);
@@ -203,10 +200,6 @@ export class Waveform {
     });
     canvas.addEventListener('pointercancel', clearSelection);
     canvas.addEventListener('lostpointercapture', clearSelection);
-    canvas.addEventListener('click', event => {
-      if (suppressClick) { suppressClick = false; return; }
-      click(event.offsetX, event.offsetY, false);
-    });
     canvas.addEventListener('contextmenu', event => event.preventDefault());
     canvas.addEventListener('wheel', event => {
       if (!event.deltaY || !this.inPlot(event.offsetX)) return;
