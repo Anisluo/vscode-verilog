@@ -14,6 +14,7 @@ export type Palette = Record<Logic, string>;
 export const defaultPalette: Palette = { '0': '#638ba4', '1': '#5ae9bd', x: '#f3b966', z: '#bd9df7' };
 const ns = 'http://www.w3.org/2000/svg';
 const grid = 8;
+const panMargin = 192;
 const px = (value: number) => value * grid;
 // Reference artwork width of the v0.1.12 RTL buffer with A, EN and Y.
 const triBufferWidth = px(11) * 2 / 3;
@@ -39,7 +40,6 @@ function exactAliases(net: WireNet) {
   const bits = net.signal.bits!;
   return net.aliases.map(a => a.signal).filter(s => s.bits?.length === bits.length && s.bits.every((bit, i) => bit === bits[i]));
 }
-interface PanGeometry { boxes: Box[]; routes: Route[]; captions: string[]; paths?: { nodes: Path2D; wires: Path2D } }
 interface Contact { part: Part; slot: Slot; point: Point }
 interface Trace { route: Route; contacts: Contact[] }
 function valueTitle(value: Logic[], radix: Radix) {
@@ -117,8 +117,6 @@ function layoutNodes(parts: Part[], nets: WireNet[], portWidths: Map<string, num
 
 export class Schematic {
   private drawing?: SVGSVGElement;
-  private panGeometry?: PanGeometry;
-  private panCanvas?: HTMLCanvasElement;
   private view = { width: 1, height: 1 };
   private layout?: Worker;
   private readonly layoutCache = new WeakMap<Scope, { widths: string; result: Exclude<LayoutResult, { error: string }> }>();
@@ -143,9 +141,8 @@ export class Schematic {
 
   constructor(private host: HTMLElement, private onPart: (part: Part) => void, private onWire: WireMenu,
     private createLayoutWorker: () => Worker, private elkWorkerUrl: string, private doubleClickModules = false) {
-    new ResizeObserver(() => this.resize()).observe(host);
     let drag: {
-      first: Point; delta: Point; drawing: SVGSVGElement; id: number; active: boolean;
+      first: Point; delta: Point; origin: Point; drawing: SVGSVGElement; id: number; active: boolean;
     } | undefined;
     let panFrame = 0;
     let suppressClick = false;
@@ -161,10 +158,12 @@ export class Schematic {
         this.resize();
       }
       current.drawing.style.removeProperty('transform');
-      this.panCanvas?.remove();
-      this.panCanvas = undefined;
       host.classList.remove('panning');
     };
+    new ResizeObserver(() => {
+      if (drag?.active) stopDrag();
+      else this.resize();
+    }).observe(host);
     host.addEventListener('wheel', event => {
       if (!this.drawing || event.deltaY === 0) return;
       event.preventDefault();
@@ -176,7 +175,7 @@ export class Schematic {
       if (event.button !== 0 || !this.drawing || drag) return;
       suppressClick = false;
       drag = { first: { x: event.clientX, y: event.clientY }, delta: { x: 0, y: 0 },
-        drawing: this.drawing, id: event.pointerId, active: false };
+        origin: { x: 0, y: 0 }, drawing: this.drawing, id: event.pointerId, active: false };
     });
     host.addEventListener('pointermove', event => {
       if (!drag || event.pointerId !== drag.id || !(event.buttons & 1)) return;
@@ -190,12 +189,21 @@ export class Schematic {
         this.manualView = true;
         suppressClick = true;
         host.classList.add('panning');
+        this.setViewport(this.shift, panMargin);
       }
       drag.delta = { x, y };
       if (!panFrame) panFrame = requestAnimationFrame(() => {
         panFrame = 0;
-        // Dense drawings use a single canvas layer during the gesture.
-        if (drag?.active && drag.drawing === this.drawing && !this.paintPanPreview(drag.delta)) drag.drawing.style.transform = `translate3d(${drag.delta.x}px, ${drag.delta.y}px, 0)`;
+        if (!drag?.active || drag.drawing !== this.drawing) return;
+        let x = drag.delta.x - drag.origin.x;
+        let y = drag.delta.y - drag.origin.y;
+        // Keep the composited SVG bounded while leaving room to pan past the viewport.
+        if (Math.abs(x) >= panMargin || Math.abs(y) >= panMargin) {
+          drag.origin = drag.delta;
+          this.setViewport({ x: this.shift.x + drag.origin.x, y: this.shift.y + drag.origin.y }, panMargin);
+          x = y = 0;
+        }
+        drag.drawing.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       });
     });
     host.addEventListener('pointerup', stopDrag);
@@ -204,70 +212,6 @@ export class Schematic {
     host.addEventListener('click', event => {
       if (suppressClick) { suppressClick = false; event.stopPropagation(); }
     }, true);
-  }
-
-  private paintPanPreview(delta: Point) {
-    const geometry = this.panGeometry;
-    if (!geometry || typeof Path2D === 'undefined') return false;
-    const width = this.host.clientWidth;
-    const height = this.host.clientHeight;
-    if (!width || !height) return false;
-    const canvas = this.panCanvas ?? document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) return false;
-    if (!this.panCanvas) {
-      canvas.className = 'pan-preview';
-      canvas.setAttribute('aria-hidden', 'true');
-      this.host.append(canvas);
-      this.panCanvas = canvas;
-    }
-    const ratio = Math.min(2, window.devicePixelRatio || 1);
-    const pixelsWide = Math.round(width * ratio);
-    const pixelsHigh = Math.round(height * ratio);
-    if (canvas.width !== pixelsWide) canvas.width = pixelsWide;
-    if (canvas.height !== pixelsHigh) canvas.height = pixelsHigh;
-    if (!geometry.paths) {
-      const nodes = new Path2D();
-      const wires = new Path2D();
-      for (const box of geometry.boxes) nodes.rect(px(box.x), px(box.y), px(box.width), px(box.height));
-      for (const route of geometry.routes) {
-        for (const path of routePaths(route)) {
-          path.forEach((point, index) => {
-            if (index === 0) wires.moveTo(px(point.x), px(point.y));
-            else wires.lineTo(px(point.x), px(point.y));
-          });
-        }
-      }
-      geometry.paths = { nodes, wires };
-    }
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, pixelsWide, pixelsHigh);
-    context.setTransform(ratio * this.zoom, 0, 0, ratio * this.zoom,
-      ratio * (this.shift.x + delta.x), ratio * (this.shift.y + delta.y));
-    context.lineWidth = .85 / this.zoom;
-    context.strokeStyle = this.palette['0'];
-    context.stroke(geometry.paths.wires);
-    context.strokeStyle = this.palette['1'];
-    context.stroke(geometry.paths.nodes);
-    if (this.zoom >= .6) {
-      const left = -(this.shift.x + delta.x) / this.zoom;
-      const top = -(this.shift.y + delta.y) / this.zoom;
-      const right = left + width / this.zoom;
-      const bottom = top + height / this.zoom;
-      context.font = '12px sans-serif';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillStyle = this.palette['1'];
-      geometry.boxes.forEach((box, index) => {
-        const x = px(box.x + box.width / 2);
-        const y = px(box.y + box.height / 2);
-        if (x < left || x > right || y < top || y > bottom) return;
-        const maxWidth = px(box.width) - 8;
-        if (maxWidth < 18) return;
-        context.fillText(short(geometry.captions[index], Math.max(2, Math.floor(maxWidth / 7))), x, y, maxWidth);
-      });
-    }
-    return true;
   }
 
   private portWidth(signal: Signal, radix: Radix) {
@@ -298,7 +242,6 @@ export class Schematic {
     if (!keepDrawing) {
       this.host.replaceChildren(placeholder);
       this.drawing = undefined;
-      this.panGeometry = undefined;
       this.wires = []; this.labels = []; this.groups = [];
       this.overlay = undefined; this.traces.clear();
     }
@@ -359,8 +302,6 @@ export class Schematic {
           drawing.append(this.overlay);
           drawing.append(labels);
           nodes.forEach((node, index) => this.drawPart(drawing, { ...node, box: data.boxes[index] }, signalById, nets));
-          this.panGeometry = data.boxes.length + data.routes.length >= 250
-            ? { boxes: data.boxes, routes: data.routes, captions: nodes.map(node => partTitle(node.part)) } : undefined;
           this.drawing = drawing;
           this.host.replaceChildren(drawing);
           const newPort = oldPosition ? nodes.findIndex(n => n.part.id === resizedPort) : -1;
@@ -702,13 +643,21 @@ export class Schematic {
     const height = this.host.clientHeight;
     if (!width || !height) return;
     if (this.fitPending) { this.fit(); return; }
-    this.drawing.setAttribute('width', String(width));
-    this.drawing.setAttribute('height', String(height));
-    this.drawing.setAttribute('viewBox', `${-this.shift.x / this.zoom} ${-this.shift.y / this.zoom} ${width / this.zoom} ${height / this.zoom}`);
+    this.setViewport(this.shift, 0);
     this.drawing.classList.toggle('overview', this.zoom < .15);
     this.drawing.style.setProperty('--wire-width', Math.max(0.27, 1.4 * this.zoom) + 'px');
     const core = Math.max(0.65, 3 * this.zoom);
     this.drawing.style.setProperty('--bus-width', core + 'px');
     this.drawing.style.setProperty('--bus-outer-width', core + 2 * Math.max(.3, 1.1 * this.zoom) + 'px');
   }
+  private setViewport(shift: Point, margin: number) {
+    if (!this.drawing) return;
+    const width = this.host.clientWidth + 2 * margin;
+    const height = this.host.clientHeight + 2 * margin;
+    this.drawing.style.left = this.drawing.style.top = margin ? `-${margin}px` : '';
+    this.drawing.setAttribute('width', String(width));
+    this.drawing.setAttribute('height', String(height));
+    this.drawing.setAttribute('viewBox', `${(-shift.x - margin) / this.zoom} ${(-shift.y - margin) / this.zoom} ${width / this.zoom} ${height / this.zoom}`);
+  }
+
 }
