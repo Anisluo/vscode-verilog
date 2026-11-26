@@ -156,7 +156,11 @@ export async function hdlJob(sources: Source[], options: BuildOptions, lint: boo
     await writeFile(join(workspace, 'job.ys'), script, 'utf8');
     await writeFile(join(workspace, 'inputs.f'), args, 'utf8');
     progress?.('synthesis');
-    const { code, log } = await run(executable, lint ? ['-F', 'inputs.f'] : ['-Q', '-T', '-s', 'job.ys'], workspace, environment, fpga ? 600_000 : undefined);
+    // Keep the interactive schematic log focused on diagnostics. Verbose Yosys
+    // optimization progress can exceed the tool output cap on a large SoC.
+    const yosysArgs = [...(timing || fpga ? [] : ['-q']), '-Q', '-T', '-s', 'job.ys'];
+    const { code, log } = await run(executable, lint ? ['-F', 'inputs.f'] : yosysArgs,
+      workspace, environment, fpga ? 600_000 : undefined);
     const result: BuildResult = { ok: code === 0, log: log || (code === 0 ? '' : `HDL 工具退出状态：${code}`), diagnostics: diagnostics(log, files) };
     if (!lint) result.log = `[job.ys]\n${script}\n\n[inputs.f]\n${args}\n\n${result.log}`;
     if (!result.ok || lint) return result;
