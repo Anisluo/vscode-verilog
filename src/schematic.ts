@@ -39,6 +39,7 @@ function exactAliases(net: WireNet) {
   const bits = net.signal.bits!;
   return net.aliases.map(a => a.signal).filter(s => s.bits?.length === bits.length && s.bits.every((bit, i) => bit === bits[i]));
 }
+interface PanGeometry { boxes: Box[]; routes: Route[]; paths?: { nodes: Path2D; wires: Path2D } }
 interface Contact { part: Part; slot: Slot; point: Point }
 interface Trace { route: Route; contacts: Contact[] }
 function valueTitle(value: Logic[], radix: Radix) {
@@ -116,6 +117,8 @@ function layoutNodes(parts: Part[], nets: WireNet[], portWidths: Map<string, num
 
 export class Schematic {
   private drawing?: SVGSVGElement;
+  private panGeometry?: PanGeometry;
+  private panCanvas?: HTMLCanvasElement;
   private view = { width: 1, height: 1 };
   private layout?: Worker;
   private readonly layoutCache = new WeakMap<Scope, { widths: string; result: Exclude<LayoutResult, { error: string }> }>();
@@ -158,6 +161,8 @@ export class Schematic {
         this.resize();
       }
       current.drawing.style.removeProperty('transform');
+      this.panCanvas?.remove();
+      this.panCanvas = undefined;
       host.classList.remove('panning');
     };
     host.addEventListener('wheel', event => {
@@ -189,8 +194,8 @@ export class Schematic {
       drag.delta = { x, y };
       if (!panFrame) panFrame = requestAnimationFrame(() => {
         panFrame = 0;
-        // Pan the existing SVG layer. Apply the final distance to the viewBox on release.
-        if (drag?.active) drag.drawing.style.transform = `translate3d(${drag.delta.x}px, ${drag.delta.y}px, 0)`;
+        // Dense drawings use a single canvas layer during the gesture.
+        if (drag?.active && drag.drawing === this.drawing && !this.paintPanPreview(drag.delta)) drag.drawing.style.transform = `translate3d(${drag.delta.x}px, ${drag.delta.y}px, 0)`;
       });
     });
     host.addEventListener('pointerup', stopDrag);
@@ -199,6 +204,52 @@ export class Schematic {
     host.addEventListener('click', event => {
       if (suppressClick) { suppressClick = false; event.stopPropagation(); }
     }, true);
+  }
+
+  private paintPanPreview(delta: Point) {
+    const geometry = this.panGeometry;
+    if (!geometry || typeof Path2D === 'undefined') return false;
+    const width = this.host.clientWidth;
+    const height = this.host.clientHeight;
+    if (!width || !height) return false;
+    const canvas = this.panCanvas ?? document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return false;
+    if (!this.panCanvas) {
+      canvas.className = 'pan-preview';
+      canvas.setAttribute('aria-hidden', 'true');
+      this.host.append(canvas);
+      this.panCanvas = canvas;
+    }
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    const pixelsWide = Math.round(width * ratio);
+    const pixelsHigh = Math.round(height * ratio);
+    if (canvas.width !== pixelsWide) canvas.width = pixelsWide;
+    if (canvas.height !== pixelsHigh) canvas.height = pixelsHigh;
+    if (!geometry.paths) {
+      const nodes = new Path2D();
+      const wires = new Path2D();
+      for (const box of geometry.boxes) nodes.rect(px(box.x), px(box.y), px(box.width), px(box.height));
+      for (const route of geometry.routes) {
+        for (const path of routePaths(route)) {
+          path.forEach((point, index) => {
+            if (index === 0) wires.moveTo(px(point.x), px(point.y));
+            else wires.lineTo(px(point.x), px(point.y));
+          });
+        }
+      }
+      geometry.paths = { nodes, wires };
+    }
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, pixelsWide, pixelsHigh);
+    context.setTransform(ratio * this.zoom, 0, 0, ratio * this.zoom,
+      ratio * (this.shift.x + delta.x), ratio * (this.shift.y + delta.y));
+    context.lineWidth = .85 / this.zoom;
+    context.strokeStyle = this.palette['0'];
+    context.stroke(geometry.paths.wires);
+    context.strokeStyle = this.palette['1'];
+    context.stroke(geometry.paths.nodes);
+    return true;
   }
 
   private portWidth(signal: Signal, radix: Radix) {
@@ -229,6 +280,7 @@ export class Schematic {
     if (!keepDrawing) {
       this.host.replaceChildren(placeholder);
       this.drawing = undefined;
+      this.panGeometry = undefined;
       this.wires = []; this.labels = []; this.groups = [];
       this.overlay = undefined; this.traces.clear();
     }
@@ -289,6 +341,8 @@ export class Schematic {
           drawing.append(this.overlay);
           drawing.append(labels);
           nodes.forEach((node, index) => this.drawPart(drawing, { ...node, box: data.boxes[index] }, signalById, nets));
+          this.panGeometry = data.boxes.length + data.routes.length >= 250
+            ? { boxes: data.boxes, routes: data.routes } : undefined;
           this.drawing = drawing;
           this.host.replaceChildren(drawing);
           const newPort = oldPosition ? nodes.findIndex(n => n.part.id === resizedPort) : -1;
